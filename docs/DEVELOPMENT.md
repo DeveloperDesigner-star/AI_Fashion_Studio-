@@ -152,9 +152,10 @@ skip link. Respect `prefers-reduced-motion` and the explicit "Reduce motion" set
 points `MEDIA_ROOT` at a temp directory, seeds the catalogue and exposes `client`, `auth` (registered
 user headers) and `admin` fixtures. Tests assert status codes and JSON contracts, not internals.
 
-**Frontend** (`src/**/*.test.ts`): Vitest with jsdom and Testing Library matchers. Current coverage
-focuses on deterministic logic — formatters, fitting-room slot rules, display preferences and the
-avatar adjustment/GLB-scaling helpers (`src/lib/avatarStudio.test.ts`).
+**Frontend** (`src/**/*.test.ts(x)`): Vitest with jsdom and Testing Library matchers. Coverage focuses
+on deterministic logic — formatters, fitting-room slot rules, display preferences, catalogue filter
+URLs/labels (`src/lib/catalog.test.ts`), avatar adjustment/GLB-scaling helpers, and static rendering of
+every seeded garment silhouette (`src/components/garment/GarmentArt.test.tsx`).
 
 **E2E** (`frontend/e2e/`): Playwright smoke specs for the public shell and auth form validation. The
 browsers are not committed; `npm run e2e:install` downloads Chromium once.
@@ -174,7 +175,9 @@ browsers are not committed; `npm run e2e:install` downloads Chromium once.
 
 | I want to… | Do this |
 |---|---|
-| Add a catalogue garment | Extend `backend/app/db/seed.py`, re-run `make seed` (idempotent upsert by slug) |
+| Add a catalogue garment | Add a template or variant in `backend/app/db/catalog_data.py`, then re-run `make seed` (idempotent upsert by slug) |
+| Add a garment category | Extend `GarmentCategory` + `CATEGORY_LABELS`/`CATEGORY_GROUPS`, then add catalogue templates |
+| Add a silhouette | Draw it in `frontend/src/components/garment/GarmentArt.tsx` and add the pair to `GarmentArt.test.tsx` |
 | Add a garment slot | Update `GarmentSlot` enum, the frontend `SLOT_LABELS`/`SLOT_ORDER`, and the fitting-room rules |
 | Change the AI prompt | `backend/app/services/ai/prompts.py`; keep catalogue and size context injected by the service |
 | Add a provider | Implement the client in `services/ai/providers/`, register it, respect `enabled` + missing keys |

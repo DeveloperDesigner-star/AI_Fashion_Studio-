@@ -9,6 +9,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { StudioHubPage } from '@/pages/StudioHubPage'
 import { DesignsPage } from '@/pages/DesignsPage'
 import { AvatarPage } from '@/pages/AvatarPage'
+import { FavoritesPage } from '@/pages/FavoritesPage'
 import { AccessoriesPage } from '@/pages/AccessoriesPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { StudioPage } from '@/pages/StudioPage'
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="dashboard" element={protectedPage(<DashboardPage />)} />
         <Route path="designs" element={protectedPage(<DesignsPage />)} />
         <Route path="avatar" element={protectedPage(<AvatarPage />)} />
+        <Route path="favorites" element={protectedPage(<FavoritesPage />)} />
         <Route path="settings" element={protectedPage(<SettingsPage />)} />
         <Route path="onboarding" element={protectedPage(<OnboardingPage />)} />
         <Route path="fitting-room" element={protectedPage(<FittingRoomPage />)} />

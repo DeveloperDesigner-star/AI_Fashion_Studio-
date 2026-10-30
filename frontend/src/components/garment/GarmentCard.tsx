@@ -2,9 +2,15 @@ import { Link } from 'react-router-dom'
 import type { Garment } from '@/lib/types'
 import { GarmentArt } from '@/components/garment/GarmentArt'
 import { Badge } from '@/components/ui/Primitives'
+import { useFavorites } from '@/hooks/useFavorites'
 import { formatPrice, titleCase } from '@/lib/format'
+import { styleLabel } from '@/lib/catalog'
 
 export function GarmentCard({ garment, compact = false }: { garment: Garment; compact?: boolean }) {
+  const { isFavorite, toggle, signedIn } = useFavorites()
+  const saved = isFavorite(garment.slug, garment.is_favorite)
+  const primaryStyle = garment.styles?.[0]
+
   return (
     <article className="group relative flex flex-col border border-line bg-paper transition-colors hover:border-ink/50">
       <Link to={`/garment/${garment.slug}`} className="block focus-visible:outline-offset-4">
@@ -24,6 +30,18 @@ export function GarmentCard({ garment, compact = false }: { garment: Garment; co
         </div>
       </Link>
 
+      {signedIn && (
+        <button
+          type="button"
+          onClick={() => toggle.mutate({ slug: garment.slug, next: !saved })}
+          aria-label={saved ? `Remove ${garment.name} from favourites` : `Save ${garment.name} to favourites`}
+          aria-pressed={saved}
+          className="absolute right-2.5 top-9 flex size-8 items-center justify-center border border-line bg-paper/90 text-sm transition-colors hover:border-ink"
+        >
+          <span className={saved ? 'text-clay' : 'text-ink-muted'}>{saved ? '♥' : '♡'}</span>
+        </button>
+      )}
+
       <div className="flex flex-1 flex-col gap-2 border-t border-line p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -31,7 +49,8 @@ export function GarmentCard({ garment, compact = false }: { garment: Garment; co
               <h3 className="truncate font-display text-lg leading-tight">{garment.name}</h3>
             </Link>
             <p className="mt-0.5 text-[0.6875rem] uppercase tracking-[0.12em] text-ink-muted">
-              {titleCase(garment.category)} · {titleCase(garment.default_fabric)}
+              {primaryStyle ? `${styleLabel(primaryStyle)} · ` : ''}
+              {titleCase(garment.category)}
             </p>
           </div>
           <span className="shrink-0 text-sm tabular-nums">{formatPrice(garment.base_price_cents, garment.currency)}</span>

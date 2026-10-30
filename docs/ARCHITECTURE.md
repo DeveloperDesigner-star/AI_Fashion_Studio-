@@ -85,6 +85,7 @@ users ──1:1── profiles ──1:1── measurements
   ├──1:N── outfits ──1:N── outfit_items ──N:1── garments
   │                          └──N:1── designs
   ├──1:N── media_assets
+  ├──1:N── favorites ──N:1── garments
   ├──1:N── notifications
   └──1:N── quote_requests ──N:1── businesses
                     ├──1:N── quotes
@@ -97,6 +98,11 @@ looks ──many:many (by slug)── garments  audit_logs
 Key invariants enforced server-side:
 
 - One primary avatar per user; avatar count capped (`MAX_AVATARS_PER_USER`).
+- A favourite is unique per `(user, garment)`; hiding a garment (`is_active = false`) keeps every
+  design and outfit that references it valid while removing it from discovery.
+- Catalogue vocabulary is enforced server-side: `category`, `slot`, `styles`, `occasions`, `season`
+  and `fit` are validated against the enums in `models/enums.py`, and filters accept comma-separated
+  values for multi-select browsing.
 - An avatar references only bundled base models (`willow`, `atlas`, `line`, `curve`) and only media
   owned by the same user. Photo references require a recorded consent timestamp.
 - An outfit holds at most one garment per exclusive slot; `dress` cannot coexist with `top`/`bottom`.
@@ -140,6 +146,28 @@ avatars.parameters (JSON) ──► GET /avatars ──► GlbAvatar (React Thre
 - Reference photos (front/side/back/full body/profile) are stored privately, validated for type,
   size, 480 px minimum edge and portrait framing, and served only through authenticated media
   endpoints. No body reconstruction or measurement inference is performed.
+
+### Catalogue structure
+
+```
+garments ──category──▶ product type   (saree, kurta_pajama, formal_shoes, handbag …)
+         ──slot──────▶ fitting layer  (dress, top, bottom, outerwear, footwear, bag, watch, accessory, headwear)
+         ──styles────▶ discovery      (traditional, modern, minimalist, luxury, streetwear, vintage …)
+         ──occasions─▶ collections    (wedding, party, casual, formal, everyday, office, festive)
+         ──season────▶ seasonal rail  (all-season, spring-summer, autumn-winter, festive, resort)
+```
+
+- `backend/app/db/catalog_data.py` holds the authored catalogue (125 pieces across four departments).
+  Templates describe a garment type and variants add colourways, price deltas and style tags; the
+  seeder expands them and upserts by slug, so re-seeding is idempotent and never duplicates rows.
+- `services/catalog.py` owns labels and department grouping. `/catalog/taxonomy` returns the grouped
+  navigation with live counts, so the frontend never hardcodes a product list.
+- Discovery filters are composable (`gender`, `category`, `slot`, `style`, `occasion`, `season`, `fit`,
+  `q`, price range, `favorites_only`) and return scoped facets plus a price range for the rail.
+- Artwork remains procedural: `GarmentArt` maps every silhouette/slot pair to original SVG, and a
+  Vitest suite renders all 50 seeded pairs so a new silhouette cannot ship as a blank card.
+- Catalogue management lives under `/admin/catalog`: create, patch (price, styles, visibility,
+  feature flag) and soft-delete, each writing to the audit trail.
 
 ---
 

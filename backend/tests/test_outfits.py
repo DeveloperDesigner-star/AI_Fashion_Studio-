@@ -6,8 +6,24 @@ from fastapi.testclient import TestClient
 
 
 def _garments(client: TestClient) -> dict[str, dict]:
-    body = client.get("/api/v1/catalog/garments", params={"page_size": 60}).json()
-    return {item["slug"]: item for item in body["items"]}
+    """Resolve the fixtures used below by slug.
+
+    The catalogue is intentionally large now, so page one is not a stable lookup
+    table; the detail endpoint is.
+    """
+    slugs = [
+        "poplin-shirt",
+        "column-trousers",
+        "cashmere-crewneck",
+        "leather-loafer",
+        "bias-cut-silk-slip-dress",
+        "column-evening-gown",
+        "minimal-sneaker",
+    ]
+    return {
+        slug: client.get(f"/api/v1/catalog/garments/{slug}").json()
+        for slug in slugs
+    }
 
 
 def _outfit_payload(client: TestClient, name: str = "City look") -> dict:

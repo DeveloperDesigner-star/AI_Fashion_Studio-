@@ -7,6 +7,7 @@ import type {
   AuditLogEntry,
   AssistantResponse,
   Avatar,
+  CatalogTaxonomy,
   Design,
   Garment,
   GarmentList,
@@ -30,6 +31,8 @@ export const qk = {
   avatars: ['avatars'] as const,
   garments: (params: Record<string, string | number | boolean | undefined>) =>
     ['garments', params] as const,
+  taxonomy: ['catalog', 'taxonomy'] as const,
+  favorites: ['catalog', 'favorites'] as const,
   garment: (slug: string) => ['garment', slug] as const,
   looks: (gender?: string) => ['looks', gender ?? 'all'] as const,
   designs: (params: { status?: string; limit?: number } = {}) => ['designs', params] as const,
@@ -48,6 +51,8 @@ export const qk = {
   adminProviders: ['admin', 'providers'] as const,
   adminAudit: ['admin', 'audit'] as const,
   adminRequests: ['admin', 'requests'] as const,
+  adminCatalog: (params: { q?: string; status?: string; page?: number } = {}) =>
+    ['admin', 'catalog', params] as const,
   adminBusinesses: ['admin', 'businesses'] as const,
   aiUsage: ['admin', 'ai-usage'] as const,
 }
@@ -65,6 +70,11 @@ export const fetchers = {
     return api.get<GarmentList>(`/catalog/garments?${search.toString()}`)
   },
   garment: (slug: string) => api.get<Garment>(`/catalog/garments/${slug}`),
+  taxonomy: () => api.get<CatalogTaxonomy>('/catalog/taxonomy'),
+  favorites: () => api.get<{ items: Garment[]; total: number }>('/catalog/favorites'),
+  addFavorite: (slug: string) =>
+    api.put<{ slug: string; is_favorite: boolean }>(`/catalog/favorites/${slug}`),
+  removeFavorite: (slug: string) => api.delete(`/catalog/favorites/${slug}`),
   looks: (gender?: string) =>
     api.get<{ items: Look[] }>(`/catalog/looks${gender ? `?gender=${gender}` : ''}`),
   designs: (params: { status?: string; limit?: number } = {}) => {

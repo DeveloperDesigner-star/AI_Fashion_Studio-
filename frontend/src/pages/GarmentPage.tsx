@@ -15,6 +15,8 @@ import { Badge, ErrorState, LoadingBlock, Notice } from '@/components/ui/Primiti
 import { FALLBACK_AVATAR } from '@/lib/avatarDefaults'
 import { formatPrice, titleCase } from '@/lib/format'
 import { useMediaUrl } from '@/hooks/useMediaUrl'
+import { useFavorites } from '@/hooks/useFavorites'
+import { occasionLabel, styleLabel } from '@/lib/catalog'
 import type {
   Avatar,
   ComponentCustomisation,
@@ -63,6 +65,7 @@ export function GarmentPage() {
   const appliedDesignRef = useRef<string | null>(null)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { isFavorite, toggle, signedIn } = useFavorites()
   const user = useAuthStore((state) => state.user)
   const addItem = useStudioStore((state) => state.addItem)
 
@@ -329,14 +332,54 @@ export function GarmentPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="clay">{titleCase(garment.category)}</Badge>
               <Badge tone="neutral">{titleCase(garment.season)}</Badge>
-              {garment.tags.slice(0, 2).map((tag) => (
-                <Badge key={tag} tone="neutral">
-                  {titleCase(tag)}
+              {garment.styles.slice(0, 3).map((style) => (
+                <Badge key={style} tone="olive">
+                  {styleLabel(style)}
+                </Badge>
+              ))}
+              {garment.occasions.slice(0, 2).map((occasion) => (
+                <Badge key={occasion} tone="neutral">
+                  {occasionLabel(occasion)}
                 </Badge>
               ))}
             </div>
-            <h1 className="display-lg mt-3">{garment.name}</h1>
+            <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+              <h1 className="display-lg">{garment.name}</h1>
+              {signedIn && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    toggle.mutate({ slug: garment.slug, next: !isFavorite(garment.slug, garment.is_favorite) })
+                  }
+                  aria-pressed={isFavorite(garment.slug, garment.is_favorite)}
+                  className="flex items-center gap-2 border border-line px-3 py-2 text-[0.625rem] uppercase tracking-[0.12em] hover:border-ink"
+                >
+                  <span className={isFavorite(garment.slug, garment.is_favorite) ? 'text-clay' : 'text-ink-muted'}>
+                    {isFavorite(garment.slug, garment.is_favorite) ? '♥' : '♡'}
+                  </span>
+                  {isFavorite(garment.slug, garment.is_favorite) ? 'Saved' : 'Save piece'}
+                </button>
+              )}
+            </div>
             <p className="mt-2 text-sm leading-relaxed text-ink-muted">{garment.description}</p>
+            <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-3 text-xs sm:grid-cols-4">
+              <div>
+                <dt className="label-xs">Fit</dt>
+                <dd className="mt-0.5">{titleCase(garment.fit)}</dd>
+              </div>
+              <div>
+                <dt className="label-xs">Sizes</dt>
+                <dd className="mt-0.5">{garment.sizes.join(' · ')}</dd>
+              </div>
+              <div>
+                <dt className="label-xs">Fabric</dt>
+                <dd className="mt-0.5">{titleCase(garment.default_fabric)}</dd>
+              </div>
+              <div>
+                <dt className="label-xs">Components</dt>
+                <dd className="mt-0.5">{garment.components.length} independent parts</dd>
+              </div>
+            </dl>
           </header>
 
           <section>

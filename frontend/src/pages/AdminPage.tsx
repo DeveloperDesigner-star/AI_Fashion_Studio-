@@ -4,11 +4,13 @@ import { api, ApiError } from '@/lib/api'
 import { fetchers, qk } from '@/lib/queries'
 import { toast } from '@/stores/toastStore'
 import { Button } from '@/components/ui/Button'
-import { Input, Select } from '@/components/ui/Field'
+import { Input, Select, Textarea, Toggle } from '@/components/ui/Field'
 import { Badge, EmptyState, ErrorState, LoadingBlock, Notice, StatTile } from '@/components/ui/Primitives'
 import { formatBytes, formatDate, formatDateTime, formatPrice, titleCase } from '@/lib/format'
 import type {
   AdminList,
+  Garment,
+  GarmentList,
   AdminStats,
   AdminUser,
   AuditLogEntry,
@@ -22,6 +24,7 @@ const tabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'users', label: 'Users' },
   { id: 'providers', label: 'AI providers' },
+  { id: 'catalog', label: 'Catalogue' },
   { id: 'marketplace', label: 'Marketplace' },
   { id: 'audit', label: 'Audit trail' },
 ] as const
@@ -63,6 +66,7 @@ export function AdminPage() {
         {tab === 'overview' && <Overview />}
         {tab === 'users' && <Users />}
         {tab === 'providers' && <Providers />}
+        {tab === 'catalog' && <CatalogAdmin />}
         {tab === 'marketplace' && <MarketplaceAdmin />}
         {tab === 'audit' && <Audit />}
       </div>
@@ -350,6 +354,425 @@ function Providers() {
           </section>
         ))}
       </div>
+    </div>
+  )
+}
+
+const ADMIN_CATALOG_PAGE_SIZE = 20
+
+function CatalogAdmin() {
+  const queryClient = useQueryClient()
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState('all')
+  const [page, setPage] = useState(1)
+  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState({
+    name: '',
+    slug: '',
+    gender: 'womenswear',
+    category: 'shalwar_kameez',
+    slot: 'dress',
+    description: '',
+    base_price_cents: 14900,
+    default_fabric: 'cotton',
+    default_color: '#c9a06a',
+    season: 'all-season',
+    fit: 'regular',
+    silhouette: 'shalwar_kameez',
+    styles: ['traditional'] as string[],
+    occasions: ['everyday'] as string[],
+    sizes: 'XS,S,M,L,XL',
+    componentIds: 'body,sleeves,neckline',
+    is_featured: false,
+    is_active: true,
+  })
+
+  const catalog = useQuery({
+    queryKey: qk.adminCatalog({ q: query, status, page }),
+    queryFn: () =>
+      api.get<GarmentList>(
+        `/admin/catalog?status=${status}&page=${page}&page_size=${ADMIN_CATALOG_PAGE_SIZE}${
+          query ? `&q=${encodeURIComponent(query)}` : ''
+        }`,
+      ),
+  })
+  const taxonomy = useQuery({ queryKey: qk.taxonomy, queryFn: fetchers.taxonomy, staleTime: 600_000 })
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'catalog'] })
+    queryClient.invalidateQueries({ queryKey: ['garments'] })
+    queryClient.invalidateQueries({ queryKey: qk.taxonomy })
+  }
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.post<Garment>('/admin/catalog', {
+        name: draft.name,
+        slug: draft.slug || undefined,
+        gender: draft.gender,
+        category: draft.category,
+        slot: draft.slot,
+        description: draft.description,
+        base_price_cents: Number(draft.base_price_cents),
+        default_fabric: draft.default_fabric,
+        default_color: draft.default_color,
+        season: draft.season,
+        fit: draft.fit,
+        silhouette: draft.silhouette,
+        styles: draft.styles,
+        occasions: draft.occasions,
+        sizes: draft.sizes.split(',').map((value) => value.trim()).filter(Boolean),
+        components: draft.componentIds
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .map((id) => ({
+            id,
+            label: titleCase(id),
+            description: `${titleCase(id)} of the garment`,
+            fabrics: ['cotton', 'silk', 'wool', 'linen'],
+            allows_print: id !== 'lining',
+          })),
+        is_featured: draft.is_featured,
+        is_active: draft.is_active,
+      }),
+    onSuccess: (garment) => {
+      invalidate()
+      setCreating(false)
+      setDraft((current) => ({ ...current, name: '', slug: '' }))
+      toast.success('Piece added', `${garment.name} is live in the catalogue.`)
+    },
+    onError: (error) =>
+      toast.error('Could not create the piece', error instanceof ApiError ? error.message : 'Check the fields.'),
+  })
+
+  const patch = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      api.patch<Garment>(`/admin/catalog/${id}`, body),
+    onSuccess: () => {
+      invalidate()
+      toast.success('Catalogue updated')
+    },
+    onError: (error) =>
+      toast.error('Update failed', error instanceof ApiError ? error.message : 'Try again.'),
+  })
+
+  const deactivate = useMutation({
+    mutationFn: (id: string) => api.delete<Garment>(`/admin/catalog/${id}`),
+    onSuccess: (garment) => {
+      invalidate()
+      toast.success('Piece hidden', `${garment.name} is no longer shown in the studio.`)
+    },
+    onError: () => toast.error('Could not hide the piece'),
+  })
+
+  const toggleStyle = (value: string) =>
+    setDraft((current) => ({
+      ...current,
+      styles: current.styles.includes(value)
+        ? current.styles.filter((entry) => entry !== value)
+        : [...current.styles, value],
+    }))
+
+  const toggleOccasion = (value: string) =>
+    setDraft((current) => ({
+      ...current,
+      occasions: current.occasions.includes(value)
+        ? current.occasions.filter((entry) => entry !== value)
+        : [...current.occasions, value],
+    }))
+
+  const totalPages = catalog.data ? Math.max(1, Math.ceil(catalog.data.total / ADMIN_CATALOG_PAGE_SIZE)) : 1
+  const activeCount = catalog.data?.facets.active ?? 0
+  const inactiveCount = catalog.data?.facets.inactive ?? 0
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <Input label="Search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name or slug" />
+          <Select
+            label="Status"
+            value={status}
+            onChange={(event) => {
+              setStatus(event.target.value)
+              setPage(1)
+            }}
+            options={[
+              { value: 'all', label: `All (${activeCount + inactiveCount})` },
+              { value: 'active', label: `Active (${activeCount})` },
+              { value: 'inactive', label: `Hidden (${inactiveCount})` },
+            ]}
+          />
+        </div>
+        <Button size="sm" onClick={() => setCreating((current) => !current)}>
+          {creating ? 'Close form' : 'Add a piece'}
+        </Button>
+      </div>
+
+      {creating && (
+        <section className="border border-line bg-paper p-5">
+          <h2 className="font-display text-xl">New catalogue piece</h2>
+          <p className="mt-1 text-xs text-ink-muted">
+            Records are stored in the database and appear immediately in the studio. Silhouette keys map to
+            the procedural artwork.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Input label="Name" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+            <Input
+              label="Slug (optional)"
+              value={draft.slug}
+              onChange={(event) => setDraft({ ...draft, slug: event.target.value })}
+              placeholder="derived from the name"
+            />
+            <Select
+              label="Department"
+              value={draft.gender}
+              onChange={(event) => setDraft({ ...draft, gender: event.target.value })}
+              options={[
+                { value: 'womenswear', label: 'Womenswear' },
+                { value: 'menswear', label: 'Menswear' },
+                { value: 'unisex', label: 'Unisex' },
+              ]}
+            />
+            <Select
+              label="Category"
+              value={draft.category}
+              onChange={(event) => setDraft({ ...draft, category: event.target.value })}
+              options={(taxonomy.data?.categories ?? []).map((entry) => ({ value: entry.value, label: entry.label }))}
+            />
+            <Select
+              label="Slot"
+              value={draft.slot}
+              onChange={(event) => setDraft({ ...draft, slot: event.target.value })}
+              options={(taxonomy.data?.slots ?? []).map((slot) => ({ value: slot, label: titleCase(slot) }))}
+            />
+            <Input
+              label="Price (cents)"
+              type="number"
+              value={draft.base_price_cents}
+              onChange={(event) => setDraft({ ...draft, base_price_cents: Number(event.target.value) })}
+            />
+            <Input
+              label="Default fabric"
+              value={draft.default_fabric}
+              onChange={(event) => setDraft({ ...draft, default_fabric: event.target.value })}
+            />
+            <Input
+              label="Default colour"
+              value={draft.default_color}
+              onChange={(event) => setDraft({ ...draft, default_color: event.target.value })}
+            />
+            <Input
+              label="Silhouette key"
+              value={draft.silhouette}
+              onChange={(event) => setDraft({ ...draft, silhouette: event.target.value })}
+            />
+            <Select
+              label="Season"
+              value={draft.season}
+              onChange={(event) => setDraft({ ...draft, season: event.target.value })}
+              options={(taxonomy.data?.seasons ?? []).map((entry) => ({ value: entry.value, label: entry.label }))}
+            />
+            <Select
+              label="Fit"
+              value={draft.fit}
+              onChange={(event) => setDraft({ ...draft, fit: event.target.value })}
+              options={['slim', 'regular', 'loose', 'oversized'].map((value) => ({ value, label: titleCase(value) }))}
+            />
+            <Input
+              label="Sizes (comma separated)"
+              value={draft.sizes}
+              onChange={(event) => setDraft({ ...draft, sizes: event.target.value })}
+            />
+          </div>
+
+          <Textarea
+            label="Description"
+            className="mt-4"
+            rows={2}
+            value={draft.description}
+            onChange={(event) => setDraft({ ...draft, description: event.target.value })}
+          />
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="label-xs mb-2">Styles</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(taxonomy.data?.styles ?? []).map((style) => (
+                  <button
+                    key={style.value}
+                    type="button"
+                    onClick={() => toggleStyle(style.value)}
+                    aria-pressed={draft.styles.includes(style.value)}
+                    className={`border px-2 py-1 text-[0.5625rem] uppercase tracking-[0.1em] ${
+                      draft.styles.includes(style.value)
+                        ? 'border-ink bg-ink text-paper'
+                        : 'border-line text-ink-muted hover:border-ink'
+                    }`}
+                  >
+                    {style.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="label-xs mb-2">Occasions</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(taxonomy.data?.occasions ?? []).map((occasion) => (
+                  <button
+                    key={occasion.value}
+                    type="button"
+                    onClick={() => toggleOccasion(occasion.value)}
+                    aria-pressed={draft.occasions.includes(occasion.value)}
+                    className={`border px-2 py-1 text-[0.5625rem] uppercase tracking-[0.1em] ${
+                      draft.occasions.includes(occasion.value)
+                        ? 'border-ink bg-ink text-paper'
+                        : 'border-line text-ink-muted hover:border-ink'
+                    }`}
+                  >
+                    {occasion.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <Input
+            label="Component ids (comma separated)"
+            className="mt-4"
+            value={draft.componentIds}
+            onChange={(event) => setDraft({ ...draft, componentIds: event.target.value })}
+          />
+
+          <div className="mt-4 flex flex-wrap items-center gap-6">
+            <Toggle
+              checked={draft.is_featured}
+              onChange={(value) => setDraft({ ...draft, is_featured: value })}
+              label="Feature on the studio landing rail"
+            />
+            <Toggle
+              checked={draft.is_active}
+              onChange={(value) => setDraft({ ...draft, is_active: value })}
+              label="Publish immediately"
+            />
+          </div>
+
+          <div className="mt-4 flex gap-2">
+            <Button size="sm" onClick={() => create.mutate()} loading={create.isPending} disabled={draft.name.trim().length < 2}>
+              Create piece
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setCreating(false)}>
+              Cancel
+            </Button>
+          </div>
+        </section>
+      )}
+
+      {catalog.isLoading && <LoadingBlock label="Loading catalogue" rows={4} />}
+      {catalog.isError && <ErrorState title="Catalogue could not be loaded" onRetry={() => catalog.refetch()} />}
+
+      {catalog.data && (
+        <>
+          <div className="overflow-x-auto border border-line bg-paper">
+            <table className="w-full min-w-[860px] text-left text-sm">
+              <thead className="border-b border-line text-[0.5625rem] uppercase tracking-[0.12em] text-ink-muted">
+                <tr>
+                  <th className="px-3 py-2 font-normal">Piece</th>
+                  <th className="px-3 py-2 font-normal">Category</th>
+                  <th className="px-3 py-2 font-normal">Styles</th>
+                  <th className="px-3 py-2 font-normal">Price</th>
+                  <th className="px-3 py-2 font-normal">Status</th>
+                  <th className="px-3 py-2 font-normal">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {catalog.data.items.map((garment) => (
+                  <tr key={garment.id} className={garment.is_active ? '' : 'opacity-60'}>
+                    <td className="px-3 py-2">
+                      <p className="font-display text-base leading-tight">{garment.name}</p>
+                      <p className="text-[0.625rem] text-ink-muted">{garment.slug}</p>
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {titleCase(garment.category)}
+                      <span className="block text-[0.625rem] text-ink-muted">{titleCase(garment.gender)}</span>
+                    </td>
+                    <td className="px-3 py-2 text-xs">{garment.styles.slice(0, 2).join(', ') || '—'}</td>
+                    <td className="px-3 py-2 text-xs tabular-nums">{formatPrice(garment.base_price_cents)}</td>
+                    <td className="px-3 py-2">
+                      <Badge tone={garment.is_active ? 'olive' : 'neutral'}>
+                        {garment.is_active ? 'Active' : 'Hidden'}
+                      </Badge>
+                      {garment.is_featured && <Badge tone="ink" className="ml-1">Featured</Badge>}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            patch.mutate({
+                              id: garment.id,
+                              body: { is_featured: !garment.is_featured },
+                            })
+                          }
+                          className="border border-line px-2 py-1 text-[0.5625rem] uppercase tracking-[0.1em] hover:border-ink"
+                        >
+                          {garment.is_featured ? 'Unfeature' : 'Feature'}
+                        </button>
+                        {garment.is_active ? (
+                          <button
+                            type="button"
+                            onClick={() => deactivate.mutate(garment.id)}
+                            className="border border-line px-2 py-1 text-[0.5625rem] uppercase tracking-[0.1em] text-danger hover:border-danger"
+                          >
+                            Hide
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => patch.mutate({ id: garment.id, body: { is_active: true } })}
+                            className="border border-line px-2 py-1 text-[0.5625rem] uppercase tracking-[0.1em] hover:border-ink"
+                          >
+                            Restore
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {catalog.data.total === 0 && (
+            <EmptyState title="No pieces match" description="Adjust the search or status filter." />
+          )}
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>
+                Previous
+              </Button>
+              <span className="text-xs uppercase tracking-[0.14em] text-ink-muted">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={page >= totalPages}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      <Notice tone="info" title="Editing model">
+        Adding a piece publishes it immediately; hiding keeps every saved design's reference intact.
+        Price, feature and visibility changes are written to the audit trail.
+      </Notice>
     </div>
   )
 }

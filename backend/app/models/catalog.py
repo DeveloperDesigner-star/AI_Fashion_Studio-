@@ -10,7 +10,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -32,6 +43,10 @@ class Garment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     default_fabric: Mapped[str] = mapped_column(String(30), default="cotton", nullable=False)
     default_color: Mapped[str] = mapped_column(String(9), default="#1f1d1a", nullable=False)
     season: Mapped[str] = mapped_column(String(30), default="all-season", nullable=False)
+    styles: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    occasions: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    sizes: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    fit: Mapped[str] = mapped_column(String(20), default="regular", nullable=False)
     tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     # Component definitions the design editor renders (id, label, geometry, allowed choices)
     components: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
@@ -59,6 +74,23 @@ class Look(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     garment_slugs: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     palette: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Favorite(UUIDPrimaryKeyMixin, Base):
+    """A member's saved catalogue piece (distinct from saved outfits)."""
+
+    __tablename__ = "favorites"
+    __table_args__ = (UniqueConstraint("user_id", "garment_id", name="uq_favorites_user_garment"),)
+
+    user_id: Mapped[Any] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    garment_id: Mapped[Any] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("garments.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

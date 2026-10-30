@@ -52,6 +52,30 @@ def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
+def get_optional_user(
+    db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)] = None,
+) -> User | None:
+    """Resolve the caller when a token is present, without requiring one.
+
+    Public catalogue pages use this to mark a member's favourites; an expired or
+    malformed token simply yields an anonymous view instead of a 401.
+    """
+    if credentials is None or not credentials.credentials:
+        return None
+    try:
+        payload = decode_token(credentials.credentials, "access")
+        user = db.get(User, uuid.UUID(str(payload["sub"])))
+    except (TokenError, ValueError):
+        return None
+    if user is None or user.deleted_at is not None or not user.is_active:
+        return None
+    return user
+
+
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+
+
 def require_roles(*roles: UserRole) -> Callable[[User], User]:
     allowed = {role.value for role in roles}
 

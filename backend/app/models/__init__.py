@@ -5,7 +5,7 @@ from app.models.ai import AIRequest, ProviderSetting
 from app.models.audit import AuditLog
 from app.models.avatar import Avatar
 from app.models.business import Business, Quote, QuoteMessage, QuoteRequest
-from app.models.catalog import Garment, Look
+from app.models.catalog import Favorite, Garment, Look
 from app.models.design import Design
 from app.models.media import MediaAsset
 from app.models.notification import Notification
@@ -23,6 +23,7 @@ __all__ = [
     "Quote",
     "QuoteMessage",
     "QuoteRequest",
+    "Favorite",
     "Garment",
     "Look",
     "Design",

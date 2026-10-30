@@ -4,7 +4,7 @@ A production-shaped web platform for AI-assisted fashion design: parametric avat
 component-level garment editor, a WebGL fitting room, print preparation, and a quoting
 marketplace between clients and workshops.
 
-**Status: Phases 1–2 complete and verified.** Backend (FastAPI + PostgreSQL/SQLite) and frontend
+**Status: Phases 1–3 complete and verified.** Backend (FastAPI + PostgreSQL/SQLite) and frontend
 (React + TypeScript + Vite + Tailwind + React Three Fiber) run together; every screen in the route
 table is implemented against a real API. AI features degrade explicitly when no provider key is
 configured — they never fabricate model output.
@@ -17,15 +17,15 @@ configured — they never fabricate model output.
 |---|--------|----------------|
 | A | Landing & onboarding | Editorial landing page, three-step onboarding wizard (body → appearance → size) with live avatar preview |
 | B | Auth & users | Argon2id passwords, short-lived access token in memory, httpOnly refresh cookie, rotation, logout-all, change password, delete account |
-| C | Womenswear & menswear studios | Filterable catalogue (`/studio/women`, `/studio/men`) with search, slot/climate/occasion filters, sorting, pagination, curated look banner |
+| C | Womenswear & menswear studios | Database-driven catalogue (`/studio/women`, `/studio/men`) with search, category rail, style, occasion, season and fit filters, sorting, pagination, curated look banner |
 | D | Profile & measurements | Metric/imperial editing (stored metric), womenswear/menswear focus, age, height, weight, usual size, optional measurements, preferred fit, fashion styles, colour palette, profile photo, privacy toggles |
 | E | Avatar management | `/avatar`: five-avatar limit, four bundled GLB base models, 7-step creation wizard (details → photos + consent → base model → customisation → manual adjustment → save → edit/regenerate), primary selection, GLB download |
-| F | Catalogue | 25 original seeded garments with palette, fabric, silhouette and component data |
+| F | Catalogue | 125 original pieces: shalwar kameez, kurti, frock, maxi, lehenga, saree, gowns, tops, shirts, jeans, trousers, jackets, coats, sweaters, hoodies, sportswear, suits, blazers, waistcoats, sherwani, kurta pajama, eight footwear types and seven accessory types — each with palette, fabric, silhouette and component data |
 | G | Design editor | Per-component colour, fabric, pattern, embroidery, fit notes, print placement |
 | H | Component customisation | Components are independent; exclusivity rules (dress ↔ top/bottom) enforced in UI *and* API |
 | I | 3D fitting room | React Three Fiber scene, orbiting camera, contact shadows, wardrobe rail, saved-outfit loader |
 | J | 360° + walking | Drag-to-orbit, auto-rotate, deterministic walk cycle |
-| K | Shoes & accessories | Footwear/bag/watch/accessory slots stack; accessories can be hidden without deletion |
+| K | Shoes & accessories | `/studio/accessories`: sneakers, heels, sandals, boots, flats, formal, sports and traditional footwear; handbags, watches, belts, caps, scarves, jewellery and sunglasses. Slots stack; accessories can be hidden without deletion |
 | L | AI fashion assistant | Provider-backed chat when configured, deterministic rule-based stylist otherwise, with daily quota |
 | M | AI design analysis | Vision analysis of an uploaded design or photo; returns `mode: "unavailable"` when no key exists |
 | N | Image processing | Pillow/OpenCV uploads: EXIF normalisation, resize, thumbnails, palette extraction, framing checks |
@@ -38,10 +38,11 @@ configured — they never fabricate model output.
 | — | User dashboard | `/dashboard`: readiness checklist, recent designs, saved looks, open requests, storage and notice feed |
 | — | Fashion studio hub | `/studio`: six entries (women, men, accessories, design library, fitting room, stylist) plus catalogue selection |
 | — | Design library | `/designs`: filter by status, search, edit with `?design=` deep link, duplicate, archive, delete, try on |
-| — | Shoes & accessories | `/studio/accessories`: five stacking slots, counts, search and sorting |
 | — | Settings | `/settings`: account name/opt-in, unit and motion preferences, JSON data export, sign-out-everywhere |
 | U | AI provider management | Enable/disable providers, model overrides, reset to env defaults, seven-day usage breakdown |
 | V | Notifications | In-app inbox with read state and deep links |
+| — | Saved pieces | `/favorites`: heart any catalogue piece; saved server-side per account and filterable inside the studios |
+| — | Catalogue management | `/admin` → Catalogue: create pieces, edit price/featured/visibility, soft-hide and restore, all audited |
 | W | Security & privacy | Audit log, private media served through authenticated endpoints, per-view reference photos (front/side/back/full body), explicit photo consent with version stamp, rate limits, security headers |
 | X | Responsive & accessible | Mobile-first layout, keyboard-reachable controls, skip link, focus states, semantic tables/forms |
 
@@ -181,7 +182,7 @@ Base path `/api/v1`. Errors use `{"detail": {"code": "...", "message": "...", "f
 
 `health`, `meta/config`, `auth/*`, `profile/*` (incl. `POST /size-preview`, `GET /size-chart`),
 `avatars/*` (`GET /avatars/base-models`, `POST /avatars/preview`, CRUD, `POST /avatars/{id}/regenerate`),
-`catalog/*`,
+`catalog/*` (`garments`, `garments/{slug}`, `taxonomy`, `looks`, `favorites`), `admin/catalog`,
 `designs/*`, `outfits/*` (incl. `GET /outfits/compare`), `media/*` (upload with `kind` + `view`,
 content, palette, analysis, print sheet), `ai/*` (capabilities, assistant, design analysis), `marketplace/*`,
 `notifications/*`, `admin/*`.
@@ -198,13 +199,14 @@ Interactive documentation is served at `/docs`.
 | `/login`, `/register` | public | Authentication |
 | `/studio` | public | Fashion studio hub (all entries) |
 | `/studio/women`, `/studio/men` | public | Catalogue with filters and curated look |
-| `/studio/accessories` | public | Shoes, bags, watches, headwear, accessories |
+| `/studio/accessories` | public | Footwear and accessories, filterable by category and style |
 | `/garment/:slug` | public (save requires auth) | Component editor, try-on, AI analysis |
 | `/marketplace` | public (request requires auth) | Studio directory and quote requests |
 | `/onboarding` | user | Three-step setup with live avatar and sizing |
 | `/dashboard` | user | Personal dashboard |
 | `/designs` | user | Saved design library |
 | `/avatar` | user | Avatar studio: list, 7-step wizard, GLB preview and download |
+| `/favorites` | user | Saved catalogue pieces |
 | `/fitting-room` | user | 3D fitting room |
 | `/outfits` | user | Saved outfits and comparison |
 | `/profile` | user | Measurements, style preferences, photos, privacy and consent, security |
@@ -223,10 +225,10 @@ make check        # ruff + ESLint + tsc + Pytest + Vitest + production build
 Individually:
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest          # 108 tests
+cd backend && ../.venv/bin/python -m pytest          # 130 tests
 cd backend && ../.venv/bin/python -m ruff check app tests
 cd frontend && npm run typecheck && npm run lint
-cd frontend && npx vitest run                        # 23 tests
+cd frontend && npx vitest run                        # 83 tests
 cd frontend && npm run build
 cd frontend && npm run e2e                           # needs `npm run e2e:install` once
 ```
@@ -234,8 +236,24 @@ cd frontend && npm run e2e                           # needs `npm run e2e:instal
 Backend tests run against SQLite with `DATABASE_URL=sqlite://` and cover auth (including
 sign-out-everywhere), profiles, measurement validation, account data export, catalogue, designs,
 outfits, media, avatars (consent gate, ownership, limits, editing, regeneration), AI fallbacks,
-marketplace and admin rules. Frontend unit tests cover formatters, fitting-room slot exclusivity,
-persisted display preferences and the avatar adjustment/GLB scaling helpers.
+catalogue discovery/favourites/management and admin rules. Frontend unit tests cover formatters,
+fitting-room slot exclusivity, persisted display preferences, catalogue filter URLs and labels, the
+avatar adjustment/GLB scaling helpers, and every seeded garment silhouette (rendered to static SVG).
+
+### Phase 3 verification (catalogue)
+
+Verified against a live API on 2026-10-30:
+
+- 125 active pieces across four departments (57 womenswear, 46 menswear, 22 unisex) with 46 category
+  values, 13 styles, 7 occasion collections and 5 seasons.
+- Every requested category resolves to at least one piece; women's and men's studios, footwear and
+  accessories return the expected counts, and multi-value filters (`category=saree,lehenga`,
+  `slot=bag,watch,headwear,accessory`) work.
+- Style, occasion, season, fit, price and text filters combine; unknown values return `422`.
+- Favourites are per-account, idempotent, filterable (`favorites_only=true`) and private.
+- Catalogue management is admin-only (`403` for members), rejects duplicate slugs (`409`) and unknown
+  vocabularies (`422`), and hiding a piece removes it from the studio while keeping saved designs valid.
+- Every silhouette/slot pair in the seeded catalogue renders artwork (Vitest, 50 pairs).
 
 ### Phase 2 verification (profile & avatar system)
 

@@ -16,12 +16,18 @@ from app.models.audit import AuditLog
 from app.models.business import Business, QuoteRequest
 from app.models.catalog import Garment
 from app.models.design import Design
-from app.models.enums import AIRequestStatus, OrderStatus
+from app.models.enums import (
+    FASHION_STYLES,
+    OCCASIONS,
+    AIRequestStatus,
+    OrderStatus,
+)
 from app.models.media import MediaAsset
 from app.models.outfit import Outfit
 from app.models.user import User
 from app.schemas.ai import ProviderSettingRead, ProviderSettingUpdate
 from app.schemas.auth import AdminUserUpdateRequest, UserRead
+from app.schemas.catalog import GarmentAdminCreate, GarmentAdminUpdate, GarmentListResponse, GarmentRead
 from app.schemas.marketplace import (
     AdminListResponse,
     AdminStatsResponse,
@@ -32,6 +38,7 @@ from app.schemas.marketplace import (
 )
 from app.services import audit
 from app.services.ai import registry
+from app.services.catalog import known_categories, known_slots, split_csv
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -272,3 +279,171 @@ def reset_provider_override(provider: str, admin: AdminUser, db: DbSession) -> R
         db.delete(row)
         db.flush()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --------------------------------------------------------------------------- #
+# Catalogue management
+# --------------------------------------------------------------------------- #
+def _clean_slug(value: str) -> str:
+    cleaned = "-".join(part for part in "".join(char if char.isalnum() else "-" for char in value.lower()).split("-") if part)
+    return cleaned[:120]
+
+
+@router.get("/catalog", response_model=GarmentListResponse)
+def catalog_admin_list(
+    admin: AdminUser,
+    db: DbSession,
+    q: str | None = Query(default=None, max_length=80),
+    category: str | None = Query(default=None, description="Comma-separated categories"),
+    status_filter: str = Query(default="all", alias="status", pattern=r"^(all|active|inactive)$"),
+    page: int = Query(default=1, ge=1, le=200),
+    page_size: int = Query(default=30, ge=1, le=100),
+) -> GarmentListResponse:
+    stmt = select(Garment)
+    if status_filter == "active":
+        stmt = stmt.where(Garment.is_active.is_(True))
+    elif status_filter == "inactive":
+        stmt = stmt.where(Garment.is_active.is_(False))
+    categories = split_csv(category)
+    if categories:
+        unknown = [value for value in categories if value not in known_categories()]
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "bad_category", "message": f"Unknown category: {', '.join(unknown)}."},
+            )
+        stmt = stmt.where(Garment.category.in_(categories))
+    if q:
+        needle = f"%{q.strip().lower()}%"
+        stmt = stmt.where(
+            or_(func.lower(Garment.name).like(needle), func.lower(Garment.slug).like(needle))
+        )
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    items = db.scalars(
+        stmt.order_by(Garment.is_active.desc(), Garment.category.asc(), Garment.name.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    return GarmentListResponse(
+        items=[GarmentRead.model_validate(garment) for garment in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+        facets={
+            "active": db.scalar(select(func.count(Garment.id)).where(Garment.is_active.is_(True))) or 0,
+            "inactive": db.scalar(select(func.count(Garment.id)).where(Garment.is_active.is_(False))) or 0,
+        },
+    )
+
+
+def _validate_catalog_fields(
+    *, category: str | None, slot: str | None, styles: list[str] | None, occasions: list[str] | None
+) -> None:
+    if category is not None and category not in known_categories():
+        raise HTTPException(status_code=422, detail={"code": "bad_category", "message": "Unknown category."})
+    if slot is not None and slot not in known_slots():
+        raise HTTPException(status_code=422, detail={"code": "bad_slot", "message": "Unknown slot."})
+    if styles:
+        unknown = [value for value in styles if value not in FASHION_STYLES]
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "bad_style", "message": f"Unknown style: {', '.join(unknown)}."},
+            )
+    if occasions:
+        unknown = [value for value in occasions if value not in OCCASIONS]
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "bad_occasion", "message": f"Unknown occasion: {', '.join(unknown)}."},
+            )
+
+
+@router.post("/catalog", response_model=GarmentRead, status_code=status.HTTP_201_CREATED)
+def catalog_admin_create(admin: AdminUser, db: DbSession, payload: GarmentAdminCreate) -> GarmentRead:
+    _validate_catalog_fields(
+        category=payload.category,
+        slot=payload.slot,
+        styles=payload.styles,
+        occasions=payload.occasions,
+    )
+    slug = payload.slug or _clean_slug(f"{payload.name}")
+    if not slug:
+        raise HTTPException(status_code=422, detail={"code": "bad_slug", "message": "Could not derive a slug."})
+    if db.scalar(select(Garment.id).where(Garment.slug == slug)) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "slug_taken", "message": "A garment with that slug already exists."},
+        )
+    data = payload.model_dump(exclude={"slug"})
+    data["components"] = [component.model_dump() for component in payload.components]
+    garment = Garment(slug=slug, **data)
+    db.add(garment)
+    db.commit()
+    db.refresh(garment)
+    audit.record(
+        db,
+        action="admin.catalog_created",
+        user=admin,
+        resource_type="garment",
+        resource_id=garment.id,
+        detail={"slug": garment.slug},
+    )
+    return GarmentRead.model_validate(garment)
+
+
+@router.patch("/catalog/{garment_id}", response_model=GarmentRead)
+def catalog_admin_update(
+    admin: AdminUser, db: DbSession, garment_id: uuid.UUID, payload: GarmentAdminUpdate
+) -> GarmentRead:
+    garment = db.get(Garment, garment_id)
+    if garment is None:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Garment not found."})
+    data = payload.model_dump(exclude_unset=True, exclude={"components"})
+    _validate_catalog_fields(
+        category=data.get("category"),
+        slot=data.get("slot"),
+        styles=data.get("styles"),
+        occasions=data.get("occasions"),
+    )
+    if payload.components is not None:
+        if not payload.components:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "bad_components", "message": "Keep at least one component."},
+            )
+        garment.components = [component.model_dump() for component in payload.components]
+    for field, value in data.items():
+        setattr(garment, field, value)
+    db.commit()
+    db.refresh(garment)
+    audit.record(
+        db,
+        action="admin.catalog_updated",
+        user=admin,
+        resource_type="garment",
+        resource_id=garment.id,
+        detail={"fields": sorted(data)},
+    )
+    return GarmentRead.model_validate(garment)
+
+
+@router.delete("/catalog/{garment_id}", response_model=GarmentRead)
+def catalog_admin_deactivate(admin: AdminUser, db: DbSession, garment_id: uuid.UUID) -> GarmentRead:
+    """Soft-delete: the piece disappears from the studio but designs keep their reference."""
+    garment = db.get(Garment, garment_id)
+    if garment is None:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Garment not found."})
+    garment.is_active = False
+    garment.is_featured = False
+    db.commit()
+    db.refresh(garment)
+    audit.record(
+        db,
+        action="admin.catalog_deactivated",
+        user=admin,
+        resource_type="garment",
+        resource_id=garment.id,
+        detail={"slug": garment.slug},
+    )
+    return GarmentRead.model_validate(garment)

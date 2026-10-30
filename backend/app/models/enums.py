@@ -23,21 +23,79 @@ class GenderStyle(StrEnum):
 
 
 class GarmentCategory(StrEnum):
+    """Specific product types in the catalogue.
+
+    The category is the merchandising unit (a saree, a kurta pajama, a pair of
+    heels); the slot is what the fitting room needs to layer it on an avatar.
+    """
+
+    # Womenswear garments
     DRESS = "dress"
+    MAXI_DRESS = "maxi_dress"
+    FROCK = "frock"
+    GOWN = "gown"
+    KURTI = "kurti"
+    KURTA = "kurta"
+    SHALWAR_KAMEEZ = "shalwar_kameez"
+    KURTA_PAJAMA = "kurta_pajama"
+    LEHENGA = "lehenga"
+    SAREE = "saree"
     TOP = "top"
     SHIRT = "shirt"
+    TSHIRT = "tshirt"
     KNITWEAR = "knitwear"
+    SWEATER = "sweater"
+    HOODIE = "hoodie"
+    SPORTSWEAR = "sportswear"
     JACKET = "jacket"
+    BLAZER = "blazer"
     COAT = "coat"
     SUIT = "suit"
+    WAISTCOAT = "waistcoat"
+    SHERWANI = "sherwani"
     TROUSERS = "trousers"
+    JEANS = "jeans"
     SKIRT = "skirt"
     SHORTS = "shorts"
+    # Footwear
     SHOES = "shoes"
+    SNEAKERS = "sneakers"
+    HEELS = "heels"
+    SANDALS = "sandals"
+    BOOTS = "boots"
+    FLATS = "flats"
+    FORMAL_SHOES = "formal_shoes"
+    SPORTS_SHOES = "sports_shoes"
+    TRADITIONAL_FOOTWEAR = "traditional_footwear"
+    # Accessories
     BAG = "bag"
+    HANDBAG = "handbag"
     WATCH = "watch"
+    BELT = "belt"
+    CAP = "cap"
+    SCARF = "scarf"
+    JEWELLERY = "jewellery"
+    SUNGLASSES = "sunglasses"
     ACCESSORY = "accessory"
     HEADWEAR = "headwear"
+
+
+class FashionStyle(StrEnum):
+    """Editorial styles used for discovery filters and design briefs."""
+
+    TRADITIONAL = "traditional"
+    MODERN = "modern"
+    MINIMALIST = "minimalist"
+    LUXURY = "luxury"
+    CASUAL = "casual"
+    FORMAL = "formal"
+    STREETWEAR = "streetwear"
+    ETHNIC = "ethnic"
+    VINTAGE = "vintage"
+    CONTEMPORARY = "contemporary"
+    OFFICE = "office"
+    WEDDING = "wedding"
+    SEASONAL = "seasonal"
 
 
 class GarmentSlot(StrEnum):
@@ -181,6 +239,28 @@ FABRICS: tuple[str, ...] = (
     "metal",
     "rubber",
     "enamel",
+)
+
+FASHION_STYLES: tuple[str, ...] = tuple(member.value for member in FashionStyle)
+
+SEASONS: tuple[str, ...] = (
+    "all-season",
+    "spring-summer",
+    "autumn-winter",
+    "festive",
+    "resort",
+)
+
+GARMENT_FITS: tuple[str, ...] = ("slim", "regular", "loose", "oversized")
+
+OCCASIONS: tuple[str, ...] = (
+    "wedding",
+    "party",
+    "casual",
+    "formal",
+    "everyday",
+    "office",
+    "festive",
 )
 
 PATTERNS: tuple[str, ...] = (

@@ -12,6 +12,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.db.catalog_data import LOOKS as CATALOG_LOOKS
+from app.db.catalog_data import build_catalog_garments
 from app.models.catalog import Garment, Look
 
 ALL_FABRICS = [
@@ -632,11 +634,79 @@ LOOKS: list[dict[str, Any]] = [
 
 GENDER_ALIASES = {"women": "womenswear", "men": "menswear"}
 
+# Legacy rows describe their styling through tags; derive the structured columns
+# so every piece is filterable by style and occasion.
+TAG_TO_STYLE = {
+    "minimal": "minimalist",
+    "tailoring": "formal",
+    "evening": "formal",
+    "office": "office",
+    "wedding": "wedding",
+    "traditional": "traditional",
+    "everyday": "casual",
+    "weekend": "casual",
+    "travel": "casual",
+    "summer": "seasonal",
+    "winter": "seasonal",
+}
+TAG_TO_OCCASION = {
+    "wedding": "wedding",
+    "evening": "party",
+    "occasion": "party",
+    "office": "office",
+    "tailoring": "formal",
+    "festive": "festive",
+    "everyday": "everyday",
+    "weekend": "casual",
+    "travel": "casual",
+    "summer": "casual",
+    "winter": "casual",
+}
+
+
+def _legacy_defaults(data: dict[str, Any]) -> None:
+    tags = [str(tag) for tag in data.get("tags", [])]
+    if "styles" not in data:
+        styles = {TAG_TO_STYLE[tag] for tag in tags if tag in TAG_TO_STYLE}
+        styles.add("modern")
+        data["styles"] = sorted(styles)
+    if "occasions" not in data:
+        occasions = {TAG_TO_OCCASION[tag] for tag in tags if tag in TAG_TO_OCCASION}
+        data["occasions"] = sorted(occasions or {"everyday"})
+    if "sizes" not in data:
+        slot = data.get("slot")
+        data["sizes"] = (
+            ["36", "37", "38", "39", "40", "41", "42"]
+            if slot == "footwear"
+            else ["one-size"]
+            if slot in {"bag", "watch", "accessory", "headwear"}
+            else ["XS", "S", "M", "L", "XL", "XXL"]
+        )
+    data.setdefault("fit", "regular")
+
+
+def _all_garments() -> list[dict[str, Any]]:
+    legacy = [dict(payload) for payload in GARMENTS]
+    generated = build_catalog_garments()
+    seen = {entry["slug"] for entry in legacy}
+    merged = legacy + [entry for entry in generated if entry["slug"] not in seen]
+    for entry in merged:
+        _legacy_defaults(entry)
+    return merged
+
+
+def _all_looks() -> list[dict[str, Any]]:
+    merged = {look["slug"]: look for look in LOOKS}
+    for look in CATALOG_LOOKS:
+        merged.setdefault(look["slug"], look)
+    return list(merged.values())
+
 
 def seed_catalog(db: Session) -> dict[str, int]:
     created_garments = 0
     updated_garments = 0
-    for payload in GARMENTS:
+    garments = _all_garments()
+    for payload in garments:
         data = dict(payload)
         data["gender"] = GENDER_ALIASES.get(data["gender"], data["gender"])
         existing = db.scalar(select(Garment).where(Garment.slug == data["slug"]))
@@ -649,7 +719,8 @@ def seed_catalog(db: Session) -> dict[str, int]:
             updated_garments += 1
 
     created_looks = 0
-    for payload in LOOKS:
+    looks = _all_looks()
+    for payload in looks:
         existing = db.scalar(select(Look).where(Look.slug == payload["slug"]))
         if existing is None:
             db.add(Look(**payload))
@@ -662,7 +733,7 @@ def seed_catalog(db: Session) -> dict[str, int]:
     return {
         "garments_created": created_garments,
         "garments_updated": updated_garments,
-        "looks": len(LOOKS),
+        "looks": len(looks),
         "looks_created": created_looks,
     }
 

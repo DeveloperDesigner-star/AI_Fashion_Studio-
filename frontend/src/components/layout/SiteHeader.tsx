@@ -123,6 +123,7 @@ export function SiteHeader() {
                       { to: '/dashboard', label: 'Dashboard' },
                       { to: '/designs', label: 'Saved designs' },
                       { to: '/avatar', label: 'Avatar studio' },
+                      { to: '/favorites', label: 'Saved pieces' },
                       { to: '/profile', label: 'Profile & measurements' },
                       { to: '/outfits', label: 'Saved outfits' },
                       { to: '/orders', label: 'Requests & orders' },
@@ -207,6 +208,7 @@ export function SiteHeader() {
                 {[
                   { to: '/dashboard', label: 'Dashboard' },
                   { to: '/avatar', label: 'Avatar studio' },
+                  { to: '/favorites', label: 'Saved pieces' },
                   { to: '/outfits', label: 'Saved outfits' },
                   { to: '/profile', label: 'Profile & measurements' },
                   { to: '/settings', label: 'Settings' },

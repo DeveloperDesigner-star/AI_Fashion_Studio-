@@ -183,12 +183,36 @@ export interface Garment {
   default_fabric: string
   default_color: string
   season: string
+  styles: string[]
+  occasions: string[]
+  sizes: string[]
+  fit: string
   tags: string[]
   components: GarmentComponent[]
   silhouette: string
   palette: { primary?: string; secondary?: string; accent?: string }
   is_featured: boolean
+  is_active: boolean
+  is_favorite: boolean
   created_at: string
+}
+
+export interface GarmentFacets {
+  categories?: Record<string, number>
+  category_labels?: Record<string, string>
+  styles?: Record<string, number>
+  style_labels?: Record<string, string>
+  occasions?: Record<string, number>
+  occasion_labels?: Record<string, string>
+  seasons?: Record<string, number>
+  season_labels?: Record<string, string>
+  fabrics?: string[]
+  slots?: string[]
+  fits?: string[]
+  price_range?: { min_cents: number; max_cents: number }
+  favorites?: number
+  active?: number
+  inactive?: number
 }
 
 export interface GarmentList {
@@ -196,11 +220,32 @@ export interface GarmentList {
   total: number
   page: number
   page_size: number
-  facets: {
-    categories?: Record<string, number>
-    fabrics?: string[]
-    slots?: string[]
-  }
+  facets: GarmentFacets
+}
+
+export interface CatalogOption {
+  value: string
+  label: string
+  count?: number
+}
+
+export interface CatalogCategoryGroup {
+  id: string
+  label: string
+  description: string
+  categories: CatalogOption[]
+}
+
+export interface CatalogTaxonomy {
+  genders: string[]
+  categories: CatalogOption[]
+  category_groups: CatalogCategoryGroup[]
+  slots: string[]
+  styles: CatalogOption[]
+  occasions: CatalogOption[]
+  seasons: CatalogOption[]
+  fits: string[]
+  fabrics: string[]
 }
 
 export interface Look {

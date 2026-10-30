@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.enums import EMBROIDERIES, FABRICS, DesignStatus
+from app.models.enums import EMBROIDERIES, FABRICS, GARMENT_FITS, SEASONS, DesignStatus
 
 HEX = r"^#[0-9a-fA-F]{6}$"
 
@@ -48,14 +48,20 @@ class GarmentRead(ORMModel):
     default_fabric: str
     default_color: str
     season: str
+    styles: list[str]
+    occasions: list[str]
+    sizes: list[str]
+    fit: str
     tags: list[str]
     components: list[dict[str, Any]]
     silhouette: str
     palette: dict[str, Any]
     is_featured: bool
+    is_active: bool = True
+    is_favorite: bool = False
     created_at: datetime
 
-    @field_validator("tags", "components", mode="before")
+    @field_validator("tags", "components", "styles", "occasions", "sizes", mode="before")
     @classmethod
     def _default_list(cls, value: Any) -> Any:
         return value or []
@@ -266,3 +272,115 @@ __all__ = [
     "OutfitRead",
     "OutfitComparison",
 ]
+
+
+# --------------------------------------------------------------------------- #
+# Catalogue management (admin)
+# --------------------------------------------------------------------------- #
+class GarmentAdminCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=140)
+    slug: str | None = Field(default=None, pattern=r"^[a-z0-9-]{3,120}$")
+    gender: str = Field(default="womenswear", pattern=r"^(womenswear|menswear|unisex)$")
+    category: str
+    slot: str
+    description: str = Field(default="", max_length=1200)
+    story: str | None = Field(default=None, max_length=1200)
+    base_price_cents: int = Field(default=0, ge=0, le=100_000_000)
+    currency: str = Field(default="USD", min_length=3, max_length=3)
+    default_fabric: str = "cotton"
+    default_color: str = Field(default="#1f1d1a", pattern=HEX)
+    season: str = "all-season"
+    styles: list[str] = Field(default_factory=list)
+    occasions: list[str] = Field(default_factory=list)
+    sizes: list[str] = Field(default_factory=lambda: ["XS", "S", "M", "L", "XL"])
+    fit: str = "regular"
+    tags: list[str] = Field(default_factory=list)
+    silhouette: str = Field(default="classic", min_length=2, max_length=40)
+    palette: dict[str, Any] = Field(default_factory=dict)
+    components: list[GarmentComponent] = Field(default_factory=list)
+    is_featured: bool = False
+    is_active: bool = True
+
+    @field_validator("default_fabric")
+    @classmethod
+    def _fabric(cls, value: str) -> str:
+        if value not in FABRICS:
+            raise ValueError(f"Unknown fabric '{value}'")
+        return value
+
+    @field_validator("fit")
+    @classmethod
+    def _fit(cls, value: str) -> str:
+        if value not in GARMENT_FITS:
+            raise ValueError(f"Unknown fit '{value}'")
+        return value
+
+    @field_validator("season")
+    @classmethod
+    def _season(cls, value: str) -> str:
+        if value not in SEASONS:
+            raise ValueError(f"Unknown season '{value}'")
+        return value
+
+    @model_validator(mode="after")
+    def _known_component_ids(self) -> GarmentAdminCreate:
+        ids = [component.id for component in self.components]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Component ids must be unique.")
+        if not self.components:
+            raise ValueError("A garment needs at least one component.")
+        return self
+
+
+class GarmentAdminUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=140)
+    gender: str | None = Field(default=None, pattern=r"^(womenswear|menswear|unisex)$")
+    category: str | None = None
+    slot: str | None = None
+    description: str | None = Field(default=None, max_length=1200)
+    story: str | None = Field(default=None, max_length=1200)
+    base_price_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+    default_fabric: str | None = None
+    default_color: str | None = Field(default=None, pattern=HEX)
+    season: str | None = None
+    styles: list[str] | None = None
+    occasions: list[str] | None = None
+    sizes: list[str] | None = None
+    fit: str | None = None
+    tags: list[str] | None = None
+    silhouette: str | None = Field(default=None, min_length=2, max_length=40)
+    palette: dict[str, Any] | None = None
+    components: list[GarmentComponent] | None = None
+    is_featured: bool | None = None
+    is_active: bool | None = None
+
+    @field_validator("default_fabric")
+    @classmethod
+    def _fabric(cls, value: str | None) -> str | None:
+        if value is not None and value not in FABRICS:
+            raise ValueError(f"Unknown fabric '{value}'")
+        return value
+
+    @field_validator("fit")
+    @classmethod
+    def _fit(cls, value: str | None) -> str | None:
+        if value is not None and value not in GARMENT_FITS:
+            raise ValueError(f"Unknown fit '{value}'")
+        return value
+
+    @field_validator("season")
+    @classmethod
+    def _season(cls, value: str | None) -> str | None:
+        if value is not None and value not in SEASONS:
+            raise ValueError(f"Unknown season '{value}'")
+        return value
+
+
+class FavoriteRead(BaseModel):
+    slug: str
+    is_favorite: bool
+
+
+class FavoriteListResponse(BaseModel):
+    items: list[GarmentRead]
+    total: int
