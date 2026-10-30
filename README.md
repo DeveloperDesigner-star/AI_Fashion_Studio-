@@ -280,7 +280,7 @@ make check        # ruff + ESLint + tsc + Pytest + Vitest + production build
 Individually:
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest          # 199 tests
+cd backend && ../.venv/bin/python -m pytest          # 200 tests
 cd backend && ../.venv/bin/python -m ruff check app tests
 cd frontend && npm run typecheck && npm run lint
 cd frontend && npx vitest run                        # 178 tests
@@ -329,7 +329,7 @@ Verified on 2026-10-30 against the live API and the Vite dashboard:
   administrators can delete an asset and its file but cannot browse image bytes. Deletion
   requests require a decision; approval deletes the account, private files and dependent rows
   and leaves an audit entry. Consent events are append-only and exposed per user.
-- `make check` passes: **199 backend tests**, **178 frontend tests**, ruff, ESLint
+- `make check` passes: **200 backend tests**, **178 frontend tests**, ruff, ESLint
   `--max-warnings 0`, TypeScript and the production Vite build.
 
 ### Phase 6 verification (multi-provider AI manager)

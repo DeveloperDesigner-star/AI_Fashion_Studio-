@@ -243,7 +243,9 @@ export const fetchers = {
     api.get<{ items: AdminOffering[]; total: number }>('/admin/offerings'),
   adminProduction: () => api.get<AdminProduction>('/admin/production'),
   adminDeletionRequests: (status = 'pending') =>
-    api.get<AdminDeletionRequest[]>(`/admin/deletion-requests?status=${status}`),
+    api.get<AdminDeletionRequest[]>(
+      `/admin/deletion-requests${status ? `?status=${status}` : ''}`,
+    ),
   adminConsent: () => api.get<AdminConsentSummary>('/admin/consent'),
   adminSecurity: () => api.get<AdminSecurityOverview>('/admin/security'),
   adminSpending: () => api.get<AdminSpendingPolicy>('/admin/ai-spending'),

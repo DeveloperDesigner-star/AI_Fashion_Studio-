@@ -82,7 +82,7 @@ from app.schemas.moderation import (
     TemplateApply,
     UserAccessRead,
 )
-from app.services import audit, privacy, storage
+from app.services import access, audit, privacy, storage
 from app.services import taxonomy as taxonomy_service
 from app.services.ai import registry, spending
 from app.services.catalog import known_slots, split_csv
@@ -833,6 +833,7 @@ def user_access(user_id: uuid.UUID, admin: AdminUser, db: DbSession) -> UserAcce
     user = db.get(User, user_id)
     if user is None or user.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "not_found", "message": "User not found."})
+    access.lift_expired_suspension(db, user)
     suspension = _current_suspension(db, user.id)
     sessions = _active_sessions(db, user.id)
     profile = user.profile
@@ -1761,16 +1762,16 @@ def record_user_consent(
             status_code=409, detail={"code": "no_profile", "message": "This account has no fashion profile yet."}
         )
     version = None
-    if payload.granted:
-        profile.photo_consent_at = datetime.now(UTC)
-        version = PHOTO_CONSENT_VERSION
-        profile.photo_consent_version = version
-    else:
-        profile.photo_consent_at = None
-        profile.photo_consent_version = None
     if payload.kind == "measurement_sharing":
         profile.share_measurements = payload.granted
-    elif payload.kind == "photo_analysis":
+    else:
+        if payload.granted:
+            profile.photo_consent_at = datetime.now(UTC)
+            version = PHOTO_CONSENT_VERSION
+            profile.photo_consent_version = version
+        else:
+            profile.photo_consent_at = None
+            profile.photo_consent_version = None
         profile.allow_photo_analysis = payload.granted
     entry = privacy.record_consent(
         db,

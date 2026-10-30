@@ -648,3 +648,20 @@ def test_custom_profile_style_is_usable_after_admin_creates_it(
     rejected = client.put("/api/v1/profile", headers=auth, json={"fashion_styles": ["not_a_style"]})
     assert rejected.status_code == 422
     assert rejected.json()["detail"]["code"] == "bad_style"
+
+
+def test_measurement_consent_does_not_imply_photo_consent(
+    client: TestClient, admin_auth: dict[str, str], other_auth: dict[str, str], other_user: dict
+) -> None:
+    response = client.post(
+        f"/api/v1/admin/users/{other_user['user']['id']}/consent",
+        headers=admin_auth,
+        json={"kind": "measurement_sharing", "granted": True, "note": "Member called support."},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["kind"] == "measurement_sharing"
+
+    profile = client.get("/api/v1/profile", headers=other_auth).json()
+    assert profile["share_measurements"] is True
+    assert profile["photo_consent_at"] is None
+    assert profile["photo_consent_version"] is None

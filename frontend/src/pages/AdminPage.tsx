@@ -297,6 +297,7 @@ function AccessPanel({ userId, onClose }: { userId: string; onClose: () => void 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['admin', 'user-access', userId] })
     queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
+    queryClient.invalidateQueries({ queryKey: qk.adminSecurity })
   }
 
   const suspend = useMutation({
@@ -2357,7 +2358,7 @@ function Security() {
   const [deletionStatus, setDeletionStatus] = useState('pending')
   const deletions = useQuery({
     queryKey: qk.adminDeletionRequests(deletionStatus),
-    queryFn: () => fetchers.adminDeletionRequests(deletionStatus || undefined),
+    queryFn: () => fetchers.adminDeletionRequests(deletionStatus),
   })
 
   return (
