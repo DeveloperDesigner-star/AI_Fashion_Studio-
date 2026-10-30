@@ -8,7 +8,7 @@ import { toast } from '@/stores/toastStore'
 import { useMediaUrl } from '@/hooks/useMediaUrl'
 import { AvatarScene } from '@/components/three/AvatarScene'
 import { Button } from '@/components/ui/Button'
-import { Checkbox, Input, Select } from '@/components/ui/Field'
+import { Input, Select } from '@/components/ui/Field'
 import { ColorField } from '@/components/ui/ColorField'
 import { Modal } from '@/components/ui/Modal'
 import { Badge, ErrorState, LoadingBlock, Notice, Progress, StatTile } from '@/components/ui/Primitives'
@@ -821,11 +821,10 @@ export function ProfilePage() {
             value={deleteConfirm}
             onChange={(event) => setDeleteConfirm(event.target.value)}
           />
-          <Checkbox
-            label="I understand this cannot be undone"
-            checked={deleteConfirm === 'DELETE'}
-            onChange={() => undefined}
-          />
+          <p className="text-xs leading-relaxed text-ink-muted">
+            Deletion removes measurements, avatars, designs, outfits, uploads and request history.
+            Export anything you want to keep first.
+          </p>
         </div>
       </Modal>
     </div>
