@@ -41,7 +41,9 @@ The browser therefore always talks to one origin and no secret ever reaches clie
   (fitting-room items, viewer toggles, slot exclusivity), `toastStore`.
 - **Visuals** — no stock photography. `GarmentArt` draws each garment from its silhouette, palette
   and component customisations as SVG; `Figure`/`AvatarScene` build a parametric mannequin in
-  Three.js from `AvatarParameters`. If WebGL is unavailable the scene falls back to the 2D art.
+  Three.js from `AvatarParameters`. The fitting room goes further: it loads skinned GLB bodies and a
+  fitted sample wardrobe, and the scene reports loading progress and errors. If WebGL is missing it
+  says so explicitly (with a retry action) rather than substituting a screenshot.
 - **Design studio** — `DesignStage` renders a 240×320 technical flat from the reusable component
   kinds in `lib/designLayout.ts`. Each piece is filled with its own colour, a procedural pattern
   (`lib/fabricTexture.ts`, shared with the 3D studio) and its artwork layers, clipped to the piece.
@@ -187,6 +189,39 @@ avatars.parameters (JSON) ──► GET /avatars ──► GlbAvatar (React Thre
   size, 480 px minimum edge and portrait framing, and served only through authenticated media
   endpoints. No body reconstruction or measurement inference is performed.
 
+### Rigged fitting room
+
+```
+/fitting-room
+  ├─ saved avatars (GET /avatars) ──► rigged-models.json ──► female | male GLB
+  ├─ presentation / proportions ─────► RiggedAvatar (skinned mesh, bone-free transforms)
+  ├─ wardrobe rail (catalogue + slots) ► slot mapping → authored garment meshes
+  └─ saved outfit (GET /outfits) ────► same mapping, per-slot sample status
+```
+
+- `scripts/build_rigged_avatars.py` writes `frontend/public/models/rig/rigged-female.glb`,
+  `rigged-male.glb` and the manifest. Each body is a single skinned mesh (19 bones: hips, spine,
+  chest, neck, head, shoulders, arms, hands, thighs, shins, feet) with `idle`, `walk` and `turn`
+  animation clips. Children share the skeleton, so garments and shoes follow the walk cycle instead
+  of floating.
+- The authored wardrobe samples cover kameez/kurta top and sleeves, shalwar/trouser legs, a waistcoat
+  shell, a dupatta, flat shoes, a tote, watch bands and a cap. Each mesh is assigned a bone-influence
+  set at build time; slot mapping is the only bridge from catalogue data to geometry.
+- Because geometry is authored, not generated from arbitrary catalogue records, **the fitting room
+  never claims a random garment is fitted in 3D**. Mapping rules return either a sample (with a label
+  such as “Rigged 3D sample”) or `2D only · no 3D sample`; fidelity is surfaced in the UI.
+- Saved design components are not flattened. Their colours are read per component and applied to the
+  matched sample materials (`garment_top`, sleeves, bottom, outer, dupatta, footwear, accessories).
+- Proportions from the saved avatar (height, build, shoulder, torso, legs) are applied to the rig;
+  leg-length changes translate the body so the authored ankle height stays on the floor.
+- Camera and animation state live in the viewport, not the URL: front/¾/side/back presets, orbit,
+  pan, wheel/pinch zoom, reset, turntable, play/pause, speed and clip selection. Fullscreen uses the
+  native API where available and an expanded fixed layout otherwise.
+- Quality is chosen at mount: mobile widths use DPR ≤ 1.5, no antialiasing and no contact shadows;
+  wider screens keep shadows and antialiasing. Rendering pauses while the document is hidden. The
+  asset test suite enforces per-file byte and triangle budgets so a careless rebuild cannot silently
+  ship a multi-megabyte model.
+
 ### Catalogue structure
 
 ```
@@ -321,7 +356,7 @@ The platform intentionally does not process payments — settlement happens betw
 | Decision | Why | Cost |
 |---|---|---|
 | Procedural garment art instead of photography | Zero licensing cost, unlimited colourways, consistent look | Less photoreal than a rendered lookbook |
-| Parametric 3D mannequin, no cloth simulation | Runs on client GPUs for free; deterministic | Try-on is stylistic, not fabric-accurate |
+| Authored 3D sample wardrobe, no cloth simulation | Runs on client GPUs for free; deterministic; no false auto-fit claims | Only the shipped sample silhouettes appear in 3D; other pieces are explicitly 2D |
 | In-process rate limiting | Simple, no extra infrastructure | Not shared across replicas |
 | SQLite support alongside PostgreSQL | Fast tests, zero-setup demos | Some Postgres-specific SQL must be avoided |
 | JSON for component specs | Editor can evolve without migrations | Requires application-level validation |

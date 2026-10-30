@@ -3,24 +3,32 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '@/lib/api'
 import { fetchers, qk } from '@/lib/queries'
-import { useStudioStore, type FittingItem } from '@/stores/studioStore'
+import { useStudioStore, visibleItems, type FittingItem } from '@/stores/studioStore'
 import { toast } from '@/stores/toastStore'
-import { AvatarScene } from '@/components/three/AvatarScene'
+import { FittingRoomViewport } from '@/components/fitting/FittingRoomViewport'
 import { GarmentArt } from '@/components/garment/GarmentArt'
 import { Button, LinkButton, Spinner } from '@/components/ui/Button'
-import { Input, Select, Textarea, Toggle } from '@/components/ui/Field'
+import { Input, Select, Textarea } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
 import { Badge, EmptyState, ErrorState, Skeleton } from '@/components/ui/Primitives'
 import { FALLBACK_AVATAR } from '@/lib/avatarDefaults'
+import {
+  PIECE_LABELS,
+  isSampleSupported,
+  lookFromItems,
+  proportionPlan,
+  rigForAvatar,
+} from '@/lib/fittingRoom'
 import { SLOT_LABELS, SLOT_ORDER, cn, formatPrice, titleCase } from '@/lib/format'
 import type { Avatar, Design, Garment, Outfit, Profile } from '@/lib/types'
 
 export function FittingRoomPage() {
   const queryClient = useQueryClient()
-  const { items, addItem, removeItem, clear, hydrate, walk, autoRotate, showAccessories, setWalk, setAutoRotate, setShowAccessories } =
+  const { items, addItem, removeItem, clear, hydrate, showAccessories, setShowAccessories } =
     useStudioStore()
 
   const [activeSlot, setActiveSlot] = useState<string>('dress')
+  const [avatarId, setAvatarId] = useState<string | null>(null)
   const [saveOpen, setSaveOpen] = useState(false)
   const [outfitName, setOutfitName] = useState('Untitled look')
   const [occasion, setOccasion] = useState('everyday')
@@ -35,9 +43,17 @@ export function FittingRoomPage() {
   const profileQuery = useQuery<Profile>({ queryKey: qk.profile, queryFn: fetchers.profile })
   const outfitsQuery = useQuery({ queryKey: qk.outfits, queryFn: fetchers.outfits })
 
-  const avatar = avatarsQuery.data?.find((item) => item.is_primary) ?? avatarsQuery.data?.[0]
+  const avatars = avatarsQuery.data ?? []
+  const avatar = avatars.find((item) => item.id === avatarId) ?? avatars.find((item) => item.is_primary) ?? avatars[0]
   const parameters = avatar?.parameters ?? FALLBACK_AVATAR
   const genderStyle = profileQuery.data?.style_gender ?? 'womenswear'
+  const rig = rigForAvatar(avatar, genderStyle)
+  const proportions = useMemo(
+    () => proportionPlan(parameters, avatar?.adjustments),
+    [parameters, avatar?.adjustments],
+  )
+  const visible = useMemo(() => visibleItems(items, showAccessories), [items, showAccessories])
+  const look = useMemo(() => lookFromItems(visible), [visible])
 
   const catalogue = useMemo(() => {
     const garments = garmentsQuery.data?.items ?? []
@@ -121,8 +137,8 @@ export function FittingRoomPage() {
     return (
       <div className="shell py-16">
         <Skeleton className="h-8 w-1/3" />
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_1fr]">
-          <Skeleton className="aspect-[4/5] w-full" />
+        <div className="mt-6 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+          <Skeleton className="h-[620px] w-full" />
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, index) => (
               <Skeleton key={index} className="h-16 w-full" />
@@ -150,7 +166,7 @@ export function FittingRoomPage() {
       <div className="shell py-16">
         <EmptyState
           title="Create your avatar to open the fitting room"
-          description="Add a few measurements and we will generate a parametric body you can rotate, animate and dress."
+          description="Add a few measurements and we will generate a rigged body you can animate and dress in the fitted sample wardrobe."
           action={<LinkButton to="/onboarding">Complete onboarding</LinkButton>}
         />
       </div>
@@ -161,7 +177,7 @@ export function FittingRoomPage() {
     <div className="shell py-8">
       <header className="flex flex-col gap-4 border-b border-line pb-5 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="eyebrow">Fitting room</p>
+          <p className="eyebrow">Virtual fitting room</p>
           <h1 className="display-lg mt-1">{avatar.name}</h1>
           <p className="mt-1 text-xs uppercase tracking-[0.14em] text-ink-muted">
             {avatar.parameters.height_m.toFixed(2)} m ·{' '}
@@ -173,7 +189,7 @@ export function FittingRoomPage() {
           <Button variant="ghost" size="sm" onClick={clear} disabled={items.length === 0}>
             Undress
           </Button>
-          <LinkButton to="/profile" size="sm" variant="outline">
+          <LinkButton to="/avatar" size="sm" variant="outline">
             Adjust avatar
           </LinkButton>
           <Button size="sm" onClick={() => setSaveOpen(true)} disabled={items.length === 0}>
@@ -182,100 +198,91 @@ export function FittingRoomPage() {
         </div>
       </header>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1.08fr_1fr]">
-        <div className="space-y-3 lg:sticky lg:top-20 lg:self-start">
-          <AvatarScene
-            parameters={parameters}
-            skinTone={avatar.skin_tone}
-            hairColor={avatar.hair_color}
-            hairStyle={avatar.hair_style}
-            className="aspect-[4/5] w-full"
-          />
-          <div className="grid grid-cols-3 gap-px bg-line">
-            <button
-              type="button"
-              onClick={() => setWalk(!walk)}
-              className={cn(
-                'bg-paper px-3 py-3 text-left transition-colors hover:bg-bone',
-                walk && 'bg-ink text-paper hover:bg-ink',
-              )}
-              aria-pressed={walk}
-            >
-              <span className="block text-[0.5625rem] uppercase tracking-[0.14em] opacity-70">Animation</span>
-              <span className="mt-1 block text-xs">{walk ? 'Walking' : 'Play walk'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setAutoRotate(!autoRotate)}
-              className={cn(
-                'bg-paper px-3 py-3 text-left transition-colors hover:bg-bone',
-                autoRotate && 'bg-ink text-paper hover:bg-ink',
-              )}
-              aria-pressed={autoRotate}
-            >
-              <span className="block text-[0.5625rem] uppercase tracking-[0.14em] opacity-70">Turntable</span>
-              <span className="mt-1 block text-xs">{autoRotate ? 'Rotating' : 'Rotate 360°'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAccessories(!showAccessories)}
-              className={cn(
-                'bg-paper px-3 py-3 text-left transition-colors hover:bg-bone',
-                !showAccessories && 'bg-ink text-paper hover:bg-ink',
-              )}
-              aria-pressed={!showAccessories}
-            >
-              <span className="block text-[0.5625rem] uppercase tracking-[0.14em] opacity-70">Layers</span>
-              <span className="mt-1 block text-xs">{showAccessories ? 'Accessories on' : 'Accessories off'}</span>
-            </button>
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.22fr)_minmax(320px,0.78fr)]">
+        <div className="space-y-4 xl:sticky xl:top-20 xl:self-start">
+          {avatars.length > 1 ? (
+            <label className="flex items-center justify-between gap-3 border border-line bg-paper px-3 py-2">
+              <span className="text-[0.5625rem] uppercase tracking-[0.14em] text-ink-muted">
+                Saved avatar
+              </span>
+              <select
+                aria-label="Saved avatar"
+                value={avatar.id}
+                onChange={(event) => setAvatarId(event.target.value)}
+                className="min-h-8 border border-line bg-paper px-2 py-1 text-xs"
+              >
+                {avatars.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name}
+                    {entry.is_primary ? ' · primary' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          <div className="space-y-2">
+            <FittingRoomViewport
+              rig={rig}
+              look={look}
+              proportions={proportions}
+              skinTone={avatar.skin_tone}
+              hairColor={avatar.hair_color}
+              hairStyle={avatar.hair_style}
+              className="h-[clamp(520px,72vh,780px)] w-full"
+            />
+            <p className="text-[0.5625rem] leading-relaxed text-ink-muted">
+              Rigged sample wardrobe: {rig === 'female' ? 'female' : 'male'} base body,{' '}
+              {look.pieces.length} authored {look.pieces.length === 1 ? 'silhouette' : 'silhouettes'}{' '}
+              and {items.length - look.unsupported.length} mapped of {items.length} worn pieces.
+            </p>
           </div>
 
           <div className="border border-line bg-paper">
             <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
-              <p className="label-xs">Worn now</p>
-              <span className="text-[0.625rem] uppercase tracking-[0.12em] text-ink-muted">
-                {formatPrice(totalPrice)} base
-              </span>
+              <p className="label-xs">3D preview fidelity</p>
+              <Badge tone="neutral">Sample silhouettes</Badge>
             </div>
-            {items.length === 0 ? (
-              <p className="px-4 py-5 text-xs text-ink-muted">
-                Nothing worn yet. Pick a piece from the wardrobe on the right — a dress replaces a
-                separate top and bottom automatically.
+            <div className="space-y-3 px-4 py-3">
+              {look.pieces.length === 0 ? (
+                <p className="text-xs leading-relaxed text-ink-muted">
+                  The mannequin is undressed. Pick a piece from the wardrobe to wear one of the
+                  authored sample silhouettes.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {look.pieces.map((piece) => (
+                    <li key={piece.id} className="flex items-center gap-2.5">
+                      <span
+                        aria-hidden="true"
+                        className="size-4 shrink-0 border border-line"
+                        style={{ background: piece.color }}
+                      />
+                      <span className="min-w-0 flex-1 text-xs">
+                        <span className="block truncate text-ink">{piece.garmentName}</span>
+                        <span className="block text-[0.5625rem] uppercase tracking-[0.1em] text-ink-muted">
+                          {PIECE_LABELS[piece.id]} · colour mapped from your design
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {look.unsupported.length > 0 ? (
+                <ul className="space-y-1.5 border-t border-line pt-2">
+                  {look.unsupported.map((entry) => (
+                    <li key={`${entry.slot}-${entry.garmentName}`} className="text-[0.6875rem] leading-relaxed text-ink-muted">
+                      <span className="text-ink">{entry.garmentName}</span> — {entry.reason}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <p className="border-t border-line pt-2 text-[0.625rem] leading-relaxed text-ink-muted">
+                Every visible 3D piece is one of the authored rigged samples, fitted to the shared
+                skeleton. Catalogue garments are not auto-fitted or cloth-simulated: colour is mapped,
+                and the 2D preview plus technical pack remain the accurate representation.
               </p>
-            ) : (
-              <ul className="divide-y divide-line">
-                {items.map((item) => (
-                  <li key={item.key} className="flex items-center gap-3 px-4 py-3">
-                    <GarmentArt garment={item.garment} components={item.components} className="h-12 w-9 bg-bone" showShadow={false} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm">{item.garment.name}</p>
-                      <p className="text-[0.625rem] uppercase tracking-[0.12em] text-ink-muted">
-                        {SLOT_LABELS[item.slot] ?? item.slot}
-                        {item.designName ? ` · ${item.designName}` : ''}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Link
-                        to={`/garment/${item.garment.slug}`}
-                        className="text-[0.625rem] uppercase tracking-[0.1em] text-ink-muted hover:text-ink"
-                      >
-                        Edit
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => removeItem(item.key)}
-                        className="text-ink-muted hover:text-danger"
-                        aria-label={`Remove ${item.garment.name}`}
-                      >
-                        <svg viewBox="0 0 12 12" className="size-3" fill="none" aria-hidden="true">
-                          <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                        </svg>
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+            </div>
           </div>
         </div>
 
@@ -320,6 +327,7 @@ export function FittingRoomPage() {
                   .map((garment) => {
                     const designs = designsByGarment.get(garment.id) ?? []
                     const worn = items.some((item) => item.garment.id === garment.id)
+                    const sample = isSampleSupported({ slot: garment.slot, garment })
                     return (
                       <div
                         key={garment.id}
@@ -334,8 +342,13 @@ export function FittingRoomPage() {
                           className="block w-full text-left"
                           aria-pressed={worn}
                         >
-                          <div className="flex aspect-[4/5] items-center justify-center bg-bone">
+                          <div className="relative flex aspect-[4/5] items-center justify-center bg-bone">
                             <GarmentArt garment={garment} className="h-[86%] w-[86%]" />
+                            <span className="absolute left-1.5 top-1.5">
+                              <Badge tone={sample ? 'olive' : 'neutral'}>
+                                {sample ? '3D sample' : '2D only'}
+                              </Badge>
+                            </span>
                           </div>
                           <div className="border-t border-line px-2.5 py-2">
                             <p className="truncate text-xs">{garment.name}</p>
@@ -373,6 +386,70 @@ export function FittingRoomPage() {
                 )}
               </div>
             )}
+
+            <p className="mt-3 text-[0.625rem] leading-relaxed text-ink-muted">
+              “3D sample” means the slot maps to an authored rigged silhouette. “2D only” pieces stay
+              in the outfit and technical pack, but do not pretend to fit the 3D body.
+            </p>
+          </div>
+
+          <div className="border border-line bg-paper">
+            <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+              <p className="label-xs">Worn now</p>
+              <span className="text-[0.625rem] uppercase tracking-[0.12em] text-ink-muted">
+                {formatPrice(totalPrice)} base
+              </span>
+            </div>
+            {items.length === 0 ? (
+              <p className="px-4 py-5 text-xs text-ink-muted">
+                Nothing worn yet. Pick a piece from the wardrobe on the right — a dress replaces a
+                separate top and bottom automatically.
+              </p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {items.map((item) => (
+                  <li key={item.key} className="flex items-center gap-3 px-4 py-3">
+                    <GarmentArt garment={item.garment} components={item.components} className="h-12 w-9 bg-bone" showShadow={false} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm">{item.garment.name}</p>
+                      <p className="text-[0.625rem] uppercase tracking-[0.12em] text-ink-muted">
+                        {SLOT_LABELS[item.slot] ?? item.slot}
+                        {item.designName ? ` · ${item.designName}` : ''}
+                      </p>
+                      <p className="mt-0.5 text-[0.5625rem] uppercase tracking-[0.1em] text-ink-muted">
+                        {isSampleSupported(item) ? 'Rigged 3D sample' : '2D only · no 3D sample'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Link
+                        to={`/garment/${item.garment.slug}`}
+                        className="text-[0.625rem] uppercase tracking-[0.1em] text-ink-muted hover:text-ink"
+                      >
+                        Edit
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.key)}
+                        className="text-ink-muted hover:text-danger"
+                        aria-label={`Remove ${item.garment.name}`}
+                      >
+                        <svg viewBox="0 0 12 12" className="size-3" fill="none" aria-hidden="true">
+                          <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowAccessories(!showAccessories)}
+              className="w-full border-t border-line px-4 py-2 text-left text-[0.5625rem] uppercase tracking-[0.12em] text-ink-muted hover:text-ink"
+              aria-pressed={showAccessories}
+            >
+              {showAccessories ? 'Hide accessory layers in 3D' : 'Show accessory layers in 3D'}
+            </button>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -408,19 +485,21 @@ export function FittingRoomPage() {
               <p className="mt-2 font-display text-lg leading-tight">{avatar.name}</p>
               <p className="mt-1 text-xs text-ink-muted">
                 {items.length === 0
-                  ? 'Undressed mannequin'
+                  ? 'Undressed rigged mannequin'
                   : `${items.length} pieces · ${formatPrice(totalPrice)}`}
               </p>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 <Badge tone="neutral">{titleCase(avatar.gender_presentation)}</Badge>
                 <Badge tone="neutral">{avatar.parameters.height_m.toFixed(2)} m</Badge>
+                <Badge tone="neutral">{rig === 'female' ? 'Female rig' : 'Male rig'}</Badge>
               </div>
             </div>
           </div>
 
           <div className="border border-line border-dashed p-4 text-xs leading-relaxed text-ink-muted">
-            The mannequin is generated from your measurements, not scanned. Garment geometry is a
-            simplified drape — use the print proof and technical pack for real production tolerances.
+            The mannequin is generated from your measurements, not scanned. The 3D wardrobe is a set of
+            authored sample garments skinned to the same rig; walking, turning and footwear motion are
+            real animations. Use the print proof and technical pack for production tolerances.
           </div>
         </div>
       </div>
@@ -458,12 +537,6 @@ export function FittingRoomPage() {
             onChange={(event) => setNotes(event.target.value)}
             placeholder="What is this look for?"
             maxLength={2000}
-          />
-          <Toggle
-            checked={walk}
-            onChange={setWalk}
-            label="Keep walking animation on"
-            description="Only affects the preview, not the saved outfit."
           />
           <div className="flex items-center justify-between border-t border-line pt-3 text-xs text-ink-muted">
             <span>{items.length} pieces</span>

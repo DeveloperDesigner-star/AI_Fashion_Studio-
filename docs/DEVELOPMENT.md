@@ -183,5 +183,7 @@ browsers are not committed; `npm run e2e:install` downloads Chromium once.
 | Add a provider | Implement the client in `services/ai/providers/`, register it, respect `enabled` + missing keys |
 | Add a design token | Extend the `@theme` block in `src/index.css` |
 | Rebuild the avatar GLB models | `python scripts/build_avatar_models.py` (writes `frontend/public/models/*.glb` + manifest) |
+| Rebuild the rigged fitting-room assets | `python scripts/build_rigged_avatars.py` (writes `frontend/public/models/rig/*.glb` + manifest; keep within the asset-test budgets) |
+| Add a 3D garment sample | Author a skinned mesh in `scripts/build_rigged_avatars.py`, extend `rigged-models.json` and the slot mapping, then update `riggedAssets.test.ts` and the fidelity labels |
 | Add or tune a base avatar | `backend/app/services/avatar_models.py` (`BASE_MODELS`) — keep `asset_url` in sync with the generated GLB |
 | Change upload limits | `MAX_UPLOAD_MB`, `MAX_IMAGE_PIXELS` in `.env` (and `client_max_body_size` in nginx) |

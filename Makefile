@@ -4,7 +4,7 @@ FRONTEND := frontend
 PY := .venv/bin/python
 PIP := .venv/bin/pip
 
-.PHONY: help setup install backend-install frontend-install migrate seed admin dev-api dev-web test test-api test-web lint build check db-up db-down clean
+.PHONY: help setup install backend-install frontend-install migrate seed admin dev-api dev-web test test-api test-web lint build check assets db-up db-down clean
 
 help:
 	@echo "AI Fashion Studio — available targets"
@@ -15,6 +15,7 @@ help:
 	@echo "  make admin EMAIL=you@example.com PASSWORD='StrongPass123'"
 	@echo "  make dev-api        Run the FastAPI server on :8000"
 	@echo "  make dev-web        Run the Vite dev server on :5173"
+	@echo "  make assets         Regenerate avatar + rigged fitting-room GLB assets"
 	@echo "  make test           Run backend tests + frontend unit tests"
 	@echo "  make lint           Ruff + ESLint + TypeScript checks"
 	@echo "  make build          Production frontend build"
@@ -69,6 +70,10 @@ lint:
 
 build:
 	cd $(FRONTEND) && npm run build
+
+assets:
+	$(PY) scripts/build_avatar_models.py
+	$(PY) scripts/build_rigged_avatars.py
 
 check: lint test build
 

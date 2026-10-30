@@ -4,7 +4,7 @@ A production-shaped web platform for AI-assisted fashion design: parametric avat
 component-level garment editor, a WebGL fitting room, print preparation, and a quoting
 marketplace between clients and workshops.
 
-**Status: Phases 1–4 complete and verified.** Backend (FastAPI + PostgreSQL/SQLite) and frontend
+**Status: Phases 1–5 complete and verified.** Backend (FastAPI + PostgreSQL/SQLite) and frontend
 (React + TypeScript + Vite + Tailwind + React Three Fiber) run together; every screen in the route
 table is implemented against a real API. AI features degrade explicitly when no provider key is
 configured — they never fabricate model output.
@@ -23,8 +23,8 @@ configured — they never fabricate model output.
 | F | Catalogue | 125 original pieces: shalwar kameez, kurti, frock, maxi, lehenga, saree, gowns, tops, shirts, jeans, trousers, jackets, coats, sweaters, hoodies, sportswear, suits, blazers, waistcoats, sherwani, kurta pajama, eight footwear types and seven accessory types — each with palette, fabric, silhouette and component data |
 | G | Design editor | `/editor/:designId`: layered studio with reference/artwork upload, non-destructive crop, resize, rotate, move, scale, layer stack, pattern placement, colour adjustment, background removal, undo/redo, save & reopen, duplicate, per-component reset and live preview |
 | H | Component customisation | Reusable garment-component templates: shalwar kameez exposes 8 independent pieces (kameez front, back, sleeves, neckline, collar, borders, shalwar, dupatta); menswear and western garments expose shirt/coat/trouser/waistcoat/kurta/jacket pieces etc. Components are independent; design layers are stored in the DB per component and never merged |
-| I | 3D fitting room | React Three Fiber scene, orbiting camera, contact shadows, wardrobe rail, saved-outfit loader |
-| J | 360° + walking | Drag-to-orbit, auto-rotate, deterministic walk cycle |
+| I | 3D fitting room | `/fitting-room`: rigged female and male GLBs (19-bone skeleton), saved-avatar loader, authored sample wardrobe with design colour mapping, wardrobe rail, saved-outfit loader |
+| J | Animation & camera | Idle/walk/turn clips with smooth crossfades, play/pause and speed, turntable, front/3/4/side/back camera presets, pan/zoom/reset, fullscreen (native API with an expanded-layout fallback) |
 | K | Shoes & accessories | `/studio/accessories`: sneakers, heels, sandals, boots, flats, formal, sports and traditional footwear; handbags, watches, belts, caps, scarves, jewellery and sunglasses. Slots stack; accessories can be hidden without deletion |
 | L | AI fashion assistant | Provider-backed chat when configured, deterministic rule-based stylist otherwise, with daily quota |
 | M | AI design analysis | Vision analysis of an uploaded design or photo; returns `mode: "unavailable"` when no key exists |
@@ -53,8 +53,13 @@ configured — they never fabricate model output.
 - **Avatars are illustrations, not body scans.** Four bundled GLB mannequins (`willow`, `atlas`,
   `line`, `curve`) are scaled from the measurements the user types. No photograph is ever
   reconstructed into a body, and weight, age or exact measurements are never inferred from an image.
-- **3D try-on is stylistic, not photoreal.** It maps garment colourways onto a parametric mannequin;
-  it does not simulate cloth physics or the user's own photo.
+- **3D try-on is a fitted sample wardrobe, not an auto-fit.** The fitting room ships two rigged base
+  bodies and a small set of authored, skinned sample silhouettes (kameez/kurta, shalwar/trouser,
+  waistcoat, dupatta, flat shoe, tote, watch band, cap). Catalogue slots map onto those samples and the
+  saved design colours are applied per mapped material. A catalogue gown is **not** silently turned
+  into a 3D gown, and there is no cloth simulation or arbitrary garment fitting; unsupported pieces
+  are labelled “2D only” and remain in the flat preview and technical pack. The mannequin is generated
+  from typed measurements, never reconstructed from a photo.
 - **AI without keys is honest.** With no `GEMINI_API_KEY`/`GROQ_API_KEY`, assistant replies come from
   the offline rule engine and are labelled "Rule-based"; vision analysis returns an explicit
   unavailable response.
@@ -79,8 +84,9 @@ configured — they never fabricate model output.
   Library, Playwright.
 - **Backend** — Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, PostgreSQL (SQLite for
   local tests), Pillow, OpenCV, httpx.
-- **Assets** — GLB/GLTF avatar exports are Blender-compatible; garment geometry is generated at
-  runtime from `AvatarParameters`.
+- **Assets** — two committed rigged GLB avatars (female/male) with 19-bone skeletons and `idle`,
+  `walk`, `turn` clips, generated reproducibly by `scripts/build_rigged_avatars.py`; the four static
+  studio mannequins remain for avatar cards. No external asset host is used.
 
 ```
 backend/
@@ -98,7 +104,7 @@ backend/
 frontend/
   src/
     pages/              one file per route
-    components/         ui primitives, layout, 2D garment art, Three.js scene
+    components/         ui primitives, layout, 2D garment art, rigged Three.js fitting room
     lib/                api client, types, query keys, formatters
     stores/             auth, studio (fitting-room state), toasts
   e2e/                  Playwright specs
@@ -235,7 +241,7 @@ Individually:
 cd backend && ../.venv/bin/python -m pytest          # 142 tests
 cd backend && ../.venv/bin/python -m ruff check app tests
 cd frontend && npm run typecheck && npm run lint
-cd frontend && npx vitest run                        # 103 tests
+cd frontend && npx vitest run                        # 149 tests
 cd frontend && npm run build
 cd frontend && npm run e2e                           # needs `npm run e2e:install` once
 ```
@@ -247,7 +253,40 @@ catalogue discovery/favourites/management, layered design documents, cut-outs/cr
 and admin rules. Frontend unit tests cover formatters, fitting-room slot exclusivity, persisted
 display preferences, catalogue filter URLs and labels, the avatar adjustment/GLB scaling helpers,
 design-document helpers and undo/redo, the SVG studio stage and the editor page (open, edit, save,
-preview), and every seeded garment silhouette (rendered to static SVG).
+preview), every seeded garment silhouette (rendered to static SVG), and Phase 5: rigged-asset
+integrity and budgets, headless three.js animation of the body **and** outfit/footwear, sample
+mapping/fidelity rules, responsive quality settings, the camera/animation control bar and the
+fitting-room page wiring.
+
+### Phase 5 verification (rigged 3D fitting room)
+
+Verified on 2026-10-30:
+
+- Two committed GLB avatars load as skinned humanoids: **19-bone skeleton**, female 6,664 triangles
+  (296,400 bytes) and male 6,216 triangles (281,840 bytes). Both carry `idle` (4.0 s), `walk`
+  (1.2 s, looping) and `turn` (1.8 s, one-shot) clips.
+- The authored sample wardrobe is skinned to the same skeleton: kameez/kurta body and sleeves,
+  shalwar/trouser legs, waistcoat shell, dupatta, both shoes, tote, watch bands and cap. A headless
+  three.js test advances the `walk` clip and confirms body, garment and footwear vertices all move;
+  a second test confirms the `turn` clip rotates the hips through a half turn.
+- A saved avatar's presentation selects the female or male rig, and height/build/shoulder/torso/leg
+  proportions are applied to the rig (leg-length changes are verified to keep the feet on the floor).
+  Switching between two saved avatars in the page test swaps the rig.
+- Catalogue slots map onto authored silhouettes; saved design component colours are mapped per piece.
+  Items with no fitted sample (for example a leather belt) are explicitly labelled “2D only · no 3D
+  sample” and never rendered as if they fit.
+- Controls cover idle/walk/turn, play/pause, speed, turntable, front/3/4/side/back presets, reset,
+  zoom, orbit/pan and fullscreen. Mobile rules reduce DPR to 1.5, disable antialiasing and contact
+  shadows, and keep the animation loop active; desktop keeps shadows/antialiasing. Rendering pauses
+  when the tab is hidden.
+- Loading progress and a real retry path are implemented; WebGL absence shows an explicit message
+  instead of a static screenshot. `make check` passes: **142 backend tests**, **149 frontend tests**,
+  ruff, ESLint `--max-warnings 0`, TypeScript and the production Vite build.
+
+Regenerate the rigged assets with `python scripts/build_rigged_avatars.py` (from the repository root;
+requires the backend virtualenv for numpy). The script writes both GLBs and
+`frontend/public/models/rig/rigged-models.json`; a unit test fails if the manifest, runtime allowlist
+or asset budgets drift.
 
 ### Phase 4 verification (layered design studio)
 
