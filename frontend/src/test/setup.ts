@@ -29,6 +29,9 @@ class ResizeObserverStub {
 }
 window.ResizeObserver = window.ResizeObserver ?? (ResizeObserverStub as unknown as typeof ResizeObserver)
 
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = () => {}
+}
 if (!window.URL.createObjectURL) {
   window.URL.createObjectURL = vi.fn(() => 'blob:mock')
 }

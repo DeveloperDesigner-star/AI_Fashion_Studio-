@@ -17,9 +17,9 @@ backend/
     db/                 engine + session factory, catalogue seed
     models/             SQLAlchemy 2 declarative models and enums
     schemas/            Pydantic v2 request/response contracts
-    services/           imaging, sizing, avatar parameters, AI registry/providers,
+    services/           imaging, sizing, avatar parameters, AI registry/providers/tasks/quota/costs,
                         print preparation, export, audit
-  alembic/versions/     migrations (one baseline so far)
+  alembic/versions/     migrations (baseline through Phase 6)
   scripts/              init_db.py, create_admin.py, docker-entrypoint.sh
   tests/                Pytest suite (isolated SQLite + temp media root)
 frontend/
@@ -179,8 +179,11 @@ browsers are not committed; `npm run e2e:install` downloads Chromium once.
 | Add a garment category | Extend `GarmentCategory` + `CATEGORY_LABELS`/`CATEGORY_GROUPS`, then add catalogue templates |
 | Add a silhouette | Draw it in `frontend/src/components/garment/GarmentArt.tsx` and add the pair to `GarmentArt.test.tsx` |
 | Add a garment slot | Update `GarmentSlot` enum, the frontend `SLOT_LABELS`/`SLOT_ORDER`, and the fitting-room rules |
-| Change the AI prompt | `backend/app/services/ai/prompts.py`; keep catalogue and size context injected by the service |
-| Add a provider | Implement the client in `services/ai/providers/`, register it, respect `enabled` + missing keys |
+| Change the assistant prompt | `backend/app/services/ai/prompts.py`; keep catalogue and size context injected by the service |
+| Change a studio-task prompt | `backend/app/services/ai/tasks.py` (`TASKS`); modality, tokens and system prompt live together |
+| Add a provider | Implement the adapter in `backend/app/services/ai/providers.py`, add it to `PROVIDERS` and `PROVIDER_ENV_KEYS`, declare vision support, and respect both paid gates where billed |
+| Tune fallback/retries | `AI_PROVIDER_ORDER`, `AI_MAX_PROVIDER_ATTEMPTS`, `AI_PROVIDER_RETRIES`, `AI_RETRY_BACKOFF_SECONDS`, `AI_REQUEST_TIMEOUT`; no per-request override exists |
+| Add a UI task | Add it to `TASKS`, expose a named route in `endpoints/ai.py` if needed, and add it to `TOOL_ORDER` in `AssistantPage.tsx` |
 | Add a design token | Extend the `@theme` block in `src/index.css` |
 | Rebuild the avatar GLB models | `python scripts/build_avatar_models.py` (writes `frontend/public/models/*.glb` + manifest) |
 | Rebuild the rigged fitting-room assets | `python scripts/build_rigged_avatars.py` (writes `frontend/public/models/rig/*.glb` + manifest; keep within the asset-test budgets) |

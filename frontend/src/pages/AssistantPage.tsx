@@ -5,10 +5,10 @@ import { ApiError } from '@/lib/api'
 import { fetchers, qk } from '@/lib/queries'
 import { toast } from '@/stores/toastStore'
 import { Button } from '@/components/ui/Button'
-import { Textarea } from '@/components/ui/Field'
+import { Select, Textarea } from '@/components/ui/Field'
 import { Badge, Notice, Progress, Skeleton } from '@/components/ui/Primitives'
 import { relativeTime } from '@/lib/format'
-import type { AICapabilities, AssistantResponse, ProviderStatus } from '@/lib/types'
+import type { AICapabilities, AITaskCapability, AITaskResult, AssistantResponse, ProviderStatus } from '@/lib/types'
 
 interface Message {
   id: string
@@ -312,6 +312,194 @@ export function AssistantPage() {
           </Notice>
         </aside>
       </div>
+
+      {capabilities.data && <StudioTools capabilities={capabilities.data} />}
     </div>
   )
+}
+
+const TOOL_ORDER = [
+  'fashion_recommendations',
+  'style_recommendations',
+  'outfit_combination',
+  'design_description',
+  'color_suggestions',
+  'design_prompt',
+  'reference_image_analysis',
+  'pattern_identification',
+]
+
+function StudioTools({ capabilities }: { capabilities: AICapabilities }) {
+  const tasks = TOOL_ORDER.map((key) =>
+    capabilities.tasks.find((task) => task.key === key),
+  ).filter((task): task is AITaskCapability => Boolean(task))
+  const [taskKey, setTaskKey] = useState(tasks[0]?.key ?? 'fashion_recommendations')
+  const [prompt, setPrompt] = useState('')
+  const [assetId, setAssetId] = useState('')
+  const [result, setResult] = useState<AITaskResult | null>(null)
+  const selected = tasks.find((task) => task.key === taskKey)
+  const isVision = selected?.modality === 'vision'
+
+  const media = useQuery({
+    queryKey: qk.media,
+    queryFn: fetchers.media,
+    enabled: isVision,
+  })
+
+  const run = useMutation({
+    mutationFn: () =>
+      fetchers.aiTask(taskKey, {
+        prompt,
+        ...(isVision && assetId ? { image_asset_id: assetId } : {}),
+      }),
+    onSuccess: (response) => {
+      setResult(response)
+      if (response.mode === 'unavailable') {
+        toast.error('No model result', response.notice ?? 'No capable provider is enabled.')
+      }
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof ApiError && error.status === 429 ? 'Daily limit reached' : 'Tool unavailable',
+        error instanceof ApiError ? error.message : 'Please try again shortly.',
+      )
+    },
+  })
+
+  if (tasks.length === 0) return null
+  const activeProviders = capabilities.providers.filter((provider) => provider.usable)
+
+  return (
+    <section className="mt-6 border border-line bg-paper p-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="eyebrow">Atelier tools</p>
+          <h2 className="font-display text-2xl">Design and styling services</h2>
+          <p className="mt-1 max-w-2xl text-sm text-ink-muted">
+            The same provider chain powers recommendations, design copy, colour studies, prompts,
+            reference analysis and pattern identification. Vision tasks only run on providers that
+            support images.
+          </p>
+        </div>
+        <Badge tone={activeProviders.length ? 'olive' : 'neutral'}>
+          {activeProviders.length
+            ? `Chain: ${activeProviders.map((provider) => provider.name).join(' → ')}`
+            : 'Rule engine only'}
+        </Badge>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[280px_1fr]">
+        <div className="space-y-3">
+          <Select
+            label="Service"
+            value={taskKey}
+            onChange={(event) => {
+              setTaskKey(event.target.value)
+              setResult(null)
+              setAssetId('')
+            }}
+            options={tasks.map((task) => ({
+              value: task.key,
+              label: `${task.label}${task.available ? '' : ' (unavailable)'}`,
+            }))}
+          />
+          <p className="text-xs leading-relaxed text-ink-muted">{selected?.description}</p>
+          <p className="text-[0.625rem] leading-relaxed text-ink-muted">
+            {selected?.available
+              ? `Eligible providers: ${selected.providers
+                  .map((name) => providersLabel(capabilities.providers, name))
+                  .join(', ')}`
+              : 'No configured provider is eligible. The tool returns an explicit unavailable notice rather than a fabricated answer.'}
+          </p>
+          <p className="text-[0.625rem] leading-relaxed text-ink-muted">
+            {capabilities.retry_policy.max_provider_attempts} provider attempts max ·{' '}
+            {capabilities.retry_policy.timeout_seconds}s timeout ·{' '}
+            {capabilities.retry_policy.provider_retries} retries per provider.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <Textarea
+            label={isVision ? 'What should the analysis focus on?' : 'Brief'}
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder={
+              isVision
+                ? 'Identify the pattern family, repeat and likely reproduction method.'
+                : 'Describe the occasion, client, palette and any supplied pieces.'
+            }
+            maxLength={4000}
+            className="min-h-24"
+          />
+          {isVision && (
+            <Select
+              label="Reference image"
+              value={assetId}
+              onChange={(event) => setAssetId(event.target.value)}
+              options={[
+                { value: '', label: media.isLoading ? 'Loading files…' : 'Choose a private upload' },
+                ...(media.data?.items ?? []).map((asset) => ({
+                  value: asset.id,
+                  label: `${asset.original_filename} · ${asset.kind}`,
+                })),
+              ]}
+              hint="Only your own uploads are listed. Images are sent inline to the selected provider; nothing is stored in the AI log."
+            />
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              size="sm"
+              loading={run.isPending}
+              disabled={
+                prompt.trim().length < 2 || !selected?.available || (isVision && !assetId)
+              }
+              onClick={() => run.mutate()}
+            >
+              Run service
+            </Button>
+            <span className="text-[0.625rem] text-ink-muted">
+              Quota: {capabilities.daily_quota.remaining_requests} of{' '}
+              {capabilities.daily_quota.requests_limit} requests left today.
+            </span>
+          </div>
+
+          {result && (
+            <div className="border border-line bg-bone/40 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={result.mode === 'model' ? 'olive' : 'gold'}>
+                  {result.mode === 'model'
+                    ? providersLabel(capabilities.providers, result.provider ?? '')
+                    : 'No result'}
+                </Badge>
+                {result.model && <span className="text-[0.625rem] text-ink-muted">{result.model}</span>}
+                {result.fallback_used && <Badge tone="gold">fallback</Badge>}
+                {result.estimated_cost_usd != null && (
+                  <span className="text-[0.625rem] text-ink-muted">
+                    ≈ ${result.estimated_cost_usd.toFixed(5)} list value
+                  </span>
+                )}
+                <span className="ml-auto text-[0.5625rem] text-ink-muted">
+                  {result.attempts} attempt{result.attempts === 1 ? '' : 's'}
+                </span>
+              </div>
+              {result.mode === 'model' ? (
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{result.text}</p>
+              ) : (
+                <p className="mt-3 text-sm leading-relaxed text-ink-muted">{result.notice}</p>
+              )}
+              {result.notice && result.mode === 'model' && (
+                <p className="mt-3 border-t border-line pt-2 text-[0.625rem] text-ink-muted">
+                  {result.notice}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function providersLabel(providers: ProviderStatus[], name: string): string {
+  return providers.find((provider) => provider.name === name)?.label ?? name
 }

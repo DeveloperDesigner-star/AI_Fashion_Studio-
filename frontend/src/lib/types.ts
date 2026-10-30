@@ -442,7 +442,25 @@ export interface ProviderStatus {
   vision_model: string | null
   supports_vision: boolean
   free_tier: boolean
+  paid: boolean
+  priority: number
+  capabilities: string[]
+  env_key: string | null
   reason: string | null
+  status: string
+  last_tested_at: string | null
+  last_test_ok: boolean | null
+  last_test_latency_ms: number | null
+  last_test_error: string | null
+}
+
+export interface AITaskCapability {
+  key: string
+  label: string
+  description: string
+  modality: 'text' | 'vision'
+  providers: string[]
+  available: boolean
 }
 
 export interface AICapabilities {
@@ -454,10 +472,35 @@ export interface AICapabilities {
     requests_limit: number
     tokens_used: number
     tokens_limit: number
+    estimated_cost_usd: number
     resets_at: string
     remaining_requests: number
   }
   notice: string
+  tasks: AITaskCapability[]
+  provider_order: string[]
+  paid_usage_enabled: boolean
+  retry_policy: {
+    max_provider_attempts: number
+    provider_retries: number
+    timeout_seconds: number
+  }
+}
+
+export interface AITaskResult {
+  task: string
+  label: string
+  mode: 'model' | 'unavailable'
+  provider: string | null
+  model: string | null
+  text: string
+  notice: string | null
+  fallback_used: boolean
+  attempts: number
+  prompt_tokens: number | null
+  completion_tokens: number | null
+  estimated_cost_usd: number | null
+  quota: AICapabilities['daily_quota']
 }
 
 export interface AssistantResponse {
@@ -590,12 +633,89 @@ export interface AdminUser {
 
 export interface ProviderSetting {
   provider: string
+  label: string
+  role: string
   enabled: boolean
+  priority: number
   default_text_model: string | null
   default_vision_model: string | null
   notes: string | null
   configured: boolean
   usable: boolean
+  paid: boolean
+  free_tier: boolean
+  supports_vision: boolean
+  capabilities: string[]
+  env_key: string | null
+  reason: string | null
+  status: string
+  last_tested_at: string | null
+  last_test_ok: boolean | null
+  last_test_latency_ms: number | null
+  last_test_error: string | null
+}
+
+export interface ProviderTestResult {
+  ok: boolean
+  skipped: boolean
+  provider: string
+  model: string | null
+  latency_ms: number | null
+  error: string | null
+  retryable: boolean | null
+  sample: string | null
+}
+
+export interface AIProviderUsage {
+  provider: string
+  attempts: number
+  successes: number
+  errors: number
+  skipped: number
+  tokens: number
+  estimated_cost_usd: number
+  avg_latency_ms: number | null
+}
+
+export interface AIUsage {
+  window_days: number
+  providers: AIProviderUsage[]
+  by_kind: { kind: string; requests: number; estimated_cost_usd: number }[]
+  daily: { date: string; provider: string; attempts: number }[]
+  fallback_events: number
+  totals: { attempts: number; tokens: number; estimated_cost_usd: number }
+  limits: {
+    daily_requests_per_user: number
+    daily_tokens_per_user: number
+    max_provider_attempts: number
+    provider_retries: number
+    request_timeout_seconds: number
+    paid_usage_enabled: boolean
+  }
+  note: string
+}
+
+export interface AIErrorEntry {
+  id: string
+  provider: string
+  kind: string
+  model: string | null
+  status: string
+  retryable: boolean
+  error_code: string | null
+  error: string | null
+  created_at: string | null
+}
+
+export interface AIFallbackEntry {
+  id: string
+  kind: string
+  from_provider: string
+  to_provider: string
+  reason: string
+  retryable: boolean
+  status_code: number | null
+  created_at: string | null
 }
 
 export interface AuditLogEntry {

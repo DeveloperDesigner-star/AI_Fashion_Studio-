@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.ai import AIRequest
 from app.models.enums import AIRequestStatus
+from app.services.ai.base import sanitize_error
 
 
 def _since_midnight_utc() -> datetime:
@@ -43,11 +44,19 @@ def usage_today(db: Session, user_id: uuid.UUID) -> dict[str, Any]:
             AIRequest.status == AIRequestStatus.SUCCESS,
         )
     ) or 0
+    cost = db.scalar(
+        select(func.coalesce(func.sum(AIRequest.estimated_cost_usd), 0)).where(
+            AIRequest.user_id == user_id,
+            AIRequest.created_at >= since,
+            AIRequest.status == AIRequestStatus.SUCCESS.value,
+        )
+    ) or 0
     return {
         "requests_used": int(requests),
         "requests_limit": settings.ai_daily_request_limit,
         "tokens_used": int(tokens),
         "tokens_limit": settings.ai_daily_token_limit,
+        "estimated_cost_usd": round(float(cost), 8),
         "resets_at": (since + timedelta(days=1)).isoformat(),
         "remaining_requests": max(0, settings.ai_daily_request_limit - int(requests)),
     }
@@ -74,6 +83,9 @@ def log_request(
     prompt_tokens: int | None = None,
     completion_tokens: int | None = None,
     latency_ms: float | None = None,
+    estimated_cost_usd: float | None = None,
+    attempts: int = 0,
+    fallback_used: bool = False,
     error: str | None = None,
 ) -> AIRequest:
     entry = AIRequest(
@@ -86,7 +98,10 @@ def log_request(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         latency_ms=latency_ms,
-        error=error,
+        estimated_cost_usd=estimated_cost_usd,
+        attempts=attempts,
+        fallback_used=fallback_used,
+        error=sanitize_error(error) if error else None,
     )
     db.add(entry)
     return entry

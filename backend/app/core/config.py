@@ -69,6 +69,16 @@ class Settings(BaseSettings):
     ai_daily_request_limit: int = 40
     ai_daily_token_limit: int = 120_000
     ai_max_prompt_chars: int = 6000
+    # Ordered provider chain. Administrators can persist a different order.
+    ai_provider_order: str = "gemini,groq,openai"
+    # Hard ceiling on upstream attempts for one user request (no unbounded retries).
+    ai_max_provider_attempts: int = 3
+    # Retries *within* one provider for retryable failures. 0 means fall back immediately.
+    ai_provider_retries: int = 0
+    ai_retry_backoff_seconds: float = 0.35
+    ai_log_retention_days: int = 30
+    # OpenAI is billed. This gate must stay false unless an operator deliberately opts in.
+    ai_paid_usage_enabled: bool = False
 
     # ---- Fair-use limits ----
     rate_limit_enabled: bool = True

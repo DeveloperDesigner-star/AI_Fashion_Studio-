@@ -269,27 +269,66 @@ garments ──category──▶ product type   (saree, kurta_pajama, formal_sho
 ## 5. AI architecture and cost policy
 
 ```
-request ─▶ quota check ─▶ provider registry ─┬─▶ Gemini (primary, free tier, vision)
-                                             ├─▶ Groq (secondary, free tier, text)
-                                             ├─▶ OpenAI (third, disabled by default)
-                                             └─▶ local rule engine (always available)
-                          │
-                          └─▶ ai_requests row (provider, kind, status, tokens, latency)
+request ─▶ auth + rate limit ─▶ quota ─▶ task/capability check
+                                              │
+                                              ▼
+                                   effective provider chain
+                                   (admin priority, not hardcoded)
+                                              │
+             ┌────────────────────────────────┼──────────────────────────────┐
+             ▼                                ▼                              ▼
+      Gemini (primary)                   Groq (secondary)              OpenAI (tertiary)
+      text + vision, free tier           text only, free tier          text + vision, billed,
+                                                                        both paid gates required
+             │                                │                              │
+             └──────────── retryable failures ─┴──── fallback ────────────────┘
+                                              │
+                                              ▼
+                     ai_provider_attempts (every call, sanitised)
+                     ai_fallback_events  (every provider switch)
+                     ai_requests         (final outcome, tokens, cost)
 ```
 
-- Providers are enabled by configuration **and** an admin toggle; missing keys mark a provider
-  `configured: false` and it is skipped.
-- OpenAI requires `OPENAI_ENABLED=true` *and* a key; the admin UI warns that requests may be billed.
-- Quotas are per user per day (`AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT`) and are consumed by
-  rule-based replies too, so free infrastructure stays available to everyone.
-- When no provider is usable the assistant answers from the deterministic stylist and labels the
-  response `mode: "rule_based"`. Vision analysis returns `mode: "unavailable"` rather than inventing
-  a result.
-- Prompts receive only what is needed: a trimmed profile, size recommendation and a small catalogue
-  slice. Email addresses and uploaded media never enter prompts unless the user explicitly runs
-  design analysis on that asset.
+**Task matrix.** Every text-capable provider serves chat, fashion recommendations, style
+recommendations, outfit combinations, design descriptions, colour suggestions and design prompts.
+Only vision-capable providers serve reference-image analysis and pattern identification. The
+registry checks the matrix before calling; Groq never receives an image.
 
----
+**Fallback policy.**
+
+- Administrators persist provider priority in `provider_settings.priority`; the default order comes
+  from `AI_PROVIDER_ORDER`.
+- Only providers that are configured, enabled, past the paid gate and capable of the task join the
+  chain.
+- HTTP 408/409/425/429/5xx and transport timeouts are retryable. A retryable failure can be retried
+  inside the same provider up to `AI_PROVIDER_RETRIES` (default 0) and always advances to the next
+  provider. Non-retryable failures also advance rather than leaving the user without a result.
+- `AI_MAX_PROVIDER_ATTEMPTS` (default 3) is a hard per-request cap and the client cannot raise it.
+  Each request has `AI_REQUEST_TIMEOUT` seconds. There is no unbounded retry loop.
+- Every attempt gets an `ai_provider_attempts` row with provider, model, status, token counts,
+  latency, estimated cost and a redacted error. Every switch gets an `ai_fallback_events` row.
+
+**Cost controls.**
+
+- OpenAI is billed and inert unless the server has a key **and** `OPENAI_ENABLED=true` **and**
+  `AI_PAID_USAGE_ENABLED=true`. The admin UI explains that toggling `enabled` alone cannot start
+  billing. No capacity is auto-purchased.
+- Per-user daily request and token quotas (`AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT`) are
+  enforced before routing. Rule-based replies count as one request so free infrastructure stays
+  fair.
+- Cost is estimated from published list prices for known models
+  (`services/ai/costs.py`) and stored per attempt/request; unknown models return `NULL` rather than a
+  fabricated figure. Free-tier list value may not be billed, and the UI says so.
+- Prompts and images are never persisted. Errors are truncated and redacted for common key and
+  bearer formats before they reach the database or admin API.
+
+**Admin surface.** Provider settings (order, enable, text/vision model, reset), a real connection
+probe, `/admin/ai-usage`, `/admin/ai-errors` and `/admin/ai-fallbacks`. Every mutation writes to the
+audit trail. API keys are shown only as an environment-variable *name* plus present/missing.
+
+When no provider is usable, chat uses the deterministic local stylist and labels it
+`mode: "rule_based"`; task and vision endpoints return `mode: "unavailable"` with a notice. Nothing
+is fabricated.
 
 ## 6. Media pipeline
 

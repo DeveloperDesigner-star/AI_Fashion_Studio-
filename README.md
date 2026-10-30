@@ -4,7 +4,7 @@ A production-shaped web platform for AI-assisted fashion design: parametric avat
 component-level garment editor, a WebGL fitting room, print preparation, and a quoting
 marketplace between clients and workshops.
 
-**Status: Phases 1–5 complete and verified.** Backend (FastAPI + PostgreSQL/SQLite) and frontend
+**Status: Phases 1–6 complete and verified.** Backend (FastAPI + PostgreSQL/SQLite) and frontend
 (React + TypeScript + Vite + Tailwind + React Three Fiber) run together; every screen in the route
 table is implemented against a real API. AI features degrade explicitly when no provider key is
 configured — they never fabricate model output.
@@ -39,7 +39,8 @@ configured — they never fabricate model output.
 | — | Fashion studio hub | `/studio`: six entries (women, men, accessories, design library, fitting room, stylist) plus catalogue selection |
 | — | Design library | `/designs`: filter by status, search, open the layered studio, quick edit with `?design=` deep link, duplicate, archive, delete, try on |
 | — | Settings | `/settings`: account name/opt-in, unit and motion preferences, JSON data export, sign-out-everywhere |
-| U | AI provider management | Enable/disable providers, model overrides, reset to env defaults, seven-day usage breakdown |
+| U | AI provider manager | Gemini → Groq → OpenAI chain with admin-controlled order, per-provider text/vision models, real connection tests, enable/disable, environment-default reset, sanitised error log, fallback-event review, provider-level token/latency/cost telemetry and seven-day usage breakdown |
+| U2 | AI studio services | Chat, fashion recommendations, style recommendations, outfit combinations, design descriptions, colour suggestions, design prompts, reference-image analysis and pattern identification, all through the same capability-aware fallback engine |
 | V | Notifications | In-app inbox with read state and deep links |
 | — | Saved pieces | `/favorites`: heart any catalogue piece; saved server-side per account and filterable inside the studios |
 | — | Catalogue management | `/admin` → Catalogue: create pieces, edit price/featured/visibility, soft-hide and restore, all audited |
@@ -70,8 +71,10 @@ configured — they never fabricate model output.
 - **Patterns are drawn, not photographed.** Every fabric pattern (plain, printed, embroidered,
   floral, geometric, traditional, stripes, checks and more) is generated as an original canvas tile,
   so the studio ships without licensed textile imagery.
-- **OpenAI is disabled by default** (`OPENAI_ENABLED=false`) and requires both a key and an explicit
-  admin switch. The platform never purchases capacity, GPUs or paid tiers.
+- **OpenAI is disabled by default** (`OPENAI_ENABLED=false`) and needs a key **plus** both
+  `OPENAI_ENABLED=true` and `AI_PAID_USAGE_ENABLED=true`. An admin toggle alone cannot start
+  billing; there is no automatic activation and the platform never purchases capacity, GPUs or
+  paid tiers.
 - **Playwright specs are written but browsers are not bundled.** `npm run e2e:install` downloads
   Chromium; the sandbox used for development blocked that download.
 
@@ -99,7 +102,7 @@ backend/
     schemas/            Pydantic request/response contracts
     services/           imaging, sizing, ai registry/providers, print, export, audit
   alembic/              migrations
-  tests/                88 Pytest tests
+  tests/                161 Pytest tests
   scripts/              init_db, create_admin, docker-entrypoint
 frontend/
   src/
@@ -168,6 +171,9 @@ All backend secrets live in `.env` (never committed). Key variables:
 | `MEDIA_ROOT` | Private upload directory |
 | `GEMINI_API_KEY` / `GROQ_API_KEY` | Free-tier AI providers (primary / secondary) |
 | `OPENAI_API_KEY` / `OPENAI_ENABLED` | Third provider; disabled unless explicitly enabled |
+| `AI_PAID_USAGE_ENABLED` | Second paid gate; must also be true before any OpenAI call |
+| `AI_PROVIDER_ORDER` | Default chain (`gemini,groq,openai`); admins can persist another order |
+| `AI_MAX_PROVIDER_ATTEMPTS`, `AI_PROVIDER_RETRIES`, `AI_REQUEST_TIMEOUT` | Hard retry/fallback and timeout ceilings |
 | `AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT` | Per-user fair-use quotas |
 | `RATE_LIMIT_*` | Per-IP request limits |
 
@@ -179,13 +185,20 @@ Frontend build-time values live in `frontend/.env.example` (`VITE_API_BASE_URL=/
 
 1. **Gemini** is the primary text/vision provider (free tier).
 2. **Groq** is the secondary text provider (free tier).
-3. **OpenAI** is third and **off by default**. Enabling it requires a key *and* an admin toggle, and
-   the UI warns that requests may be billed.
-4. Only the **local** rule engine runs when nothing is configured. Responses are labelled
-   "Rule-based" and never impersonate a model.
-5. Requests are logged with provider, kind, status and token counts; per-user daily quotas and
-   per-IP rate limits protect the free tier.
-6. API keys are read from backend environment variables only — never shipped to the browser.
+3. **OpenAI** is third and **off by default**. It needs a key, `OPENAI_ENABLED=true` **and**
+   `AI_PAID_USAGE_ENABLED=true`; the UI warns that requests may be billed. There is no automatic
+   billing activation.
+4. **Fallback** is Gemini → Groq → OpenAI, in an order administrators can change. A failed provider
+   moves to the next one; retryable failures (429, 408, 5xx, timeouts) are retried only within the
+   configured attempt/retry budget. Groq is never used for image tasks.
+5. Only the **local** rule engine runs when nothing is configured. Responses are labelled
+   "Rule-based" and never impersonate a model; image tasks return an explicit unavailable notice.
+6. Requests are logged with final provider, kind, status, token counts, latency and an estimated
+   list-price cost. Every provider attempt and every fallback transition is stored with a sanitised
+   error; prompts, images and API keys are never logged. Per-user daily quotas, a hard attempt cap
+   and per-IP rate limits protect the free tier.
+7. API keys are read from backend environment variables only — never shipped to the browser or
+   stored in the database.
 
 ---
 
@@ -197,8 +210,9 @@ Base path `/api/v1`. Errors use `{"detail": {"code": "...", "message": "...", "f
 `avatars/*` (`GET /avatars/base-models`, `POST /avatars/preview`, CRUD, `POST /avatars/{id}/regenerate`),
 `catalog/*` (`garments`, `garments/{slug}`, `taxonomy`, `looks`, `favorites`), `admin/catalog`,
 `designs/*`, `outfits/*` (incl. `GET /outfits/compare`), `media/*` (upload with `kind` + `view`,
-content, palette, analysis, print sheet), `ai/*` (capabilities, assistant, design analysis), `marketplace/*`,
-`notifications/*`, `admin/*`.
+content, palette, analysis, print sheet), `ai/*` (capabilities, providers, assistant, generic and
+named studio tasks, image analysis, design suggestions), `marketplace/*`, `notifications/*`,
+`admin/*` (incl. provider order/models/tests, usage, errors and fallback events).
 
 Interactive documentation is served at `/docs`.
 
@@ -238,10 +252,10 @@ make check        # ruff + ESLint + tsc + Pytest + Vitest + production build
 Individually:
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest          # 142 tests
+cd backend && ../.venv/bin/python -m pytest          # 161 tests
 cd backend && ../.venv/bin/python -m ruff check app tests
 cd frontend && npm run typecheck && npm run lint
-cd frontend && npx vitest run                        # 149 tests
+cd frontend && npx vitest run                        # 152 tests
 cd frontend && npm run build
 cd frontend && npm run e2e                           # needs `npm run e2e:install` once
 ```
@@ -253,10 +267,38 @@ catalogue discovery/favourites/management, layered design documents, cut-outs/cr
 and admin rules. Frontend unit tests cover formatters, fitting-room slot exclusivity, persisted
 display preferences, catalogue filter URLs and labels, the avatar adjustment/GLB scaling helpers,
 design-document helpers and undo/redo, the SVG studio stage and the editor page (open, edit, save,
-preview), every seeded garment silhouette (rendered to static SVG), and Phase 5: rigged-asset
+preview), every seeded garment silhouette (rendered to static SVG), Phase 5: rigged-asset
 integrity and budgets, headless three.js animation of the body **and** outfit/footwear, sample
 mapping/fidelity rules, responsive quality settings, the camera/animation control bar and the
-fitting-room page wiring.
+fitting-room page wiring, and Phase 6: mocked provider adapters (Gemini/Groq/OpenAI), retry/fallback
+classification, vision capability routing, admin ordering/models/connection tests, sanitised error
+logging, cost estimates and the atelier-tools UI.
+
+### Phase 6 verification (multi-provider AI manager)
+
+Verified on 2026-10-30:
+
+- Three real REST adapters: Google Gemini, Groq and OpenAI (no vendor SDKs). Requests, usage parsing,
+  HTTP error classification and timeouts are covered with `httpx.MockTransport`; no test makes a
+  paid API call.
+- **Capability matrix**: Gemini and OpenAI support text + vision; Groq is text-only and is never
+  called for `reference_image_analysis` or `pattern_identification`. Nine services are exposed:
+  chat, fashion recommendations, style recommendations, outfit combinations, design descriptions,
+  colour suggestions, design prompts, reference-image analysis and pattern identification.
+- **Fallback**: Gemini → Groq → OpenAI by default. A mocked Gemini 429 falls through to Groq and
+  writes both an `ai_provider_attempts` row and an `ai_fallback_events` row. A Gemini vision 429
+  falls through to OpenAI, skipping Groq. Retryable in-provider retries are configurable and bounded
+  by `AI_PROVIDER_RETRIES` / `AI_MAX_PROVIDER_ATTEMPTS`; request timeout is 45 s by default.
+- **Admin controls**: reorder providers (persisted priorities and reflected in capabilities),
+  enable/disable, edit text and vision models, run a real tiny connection probe, view sanitised
+  provider errors, review fallback events and monitor attempts/tokens/latency/cost. OpenAI tests are
+  skipped unless both paid gates are on.
+- **Cost/security**: per-user daily request/token quotas, estimated list-price cost per provider and
+  per request, API keys read only from the backend environment, no key or prompt content stored in
+  the database, and all errors pass through a redactor before logging or display. A test asserts
+  that provider/admin payloads never contain the key value.
+- `make check` passes: **161 backend tests**, **152 frontend tests**, ruff, ESLint
+  `--max-warnings 0`, TypeScript and the production Vite build.
 
 ### Phase 5 verification (rigged 3D fitting room)
 

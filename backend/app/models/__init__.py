@@ -1,7 +1,7 @@
 """ORM model registry — imported by Alembic and the application."""
 
 from app.db.base import Base
-from app.models.ai import AIRequest, ProviderSetting
+from app.models.ai import AIFallbackEvent, AIProviderAttempt, AIRequest, ProviderSetting
 from app.models.audit import AuditLog
 from app.models.avatar import Avatar
 from app.models.business import Business, Quote, QuoteMessage, QuoteRequest
@@ -15,6 +15,8 @@ from app.models.user import RefreshToken, User
 
 __all__ = [
     "Base",
+    "AIFallbackEvent",
+    "AIProviderAttempt",
     "AIRequest",
     "ProviderSetting",
     "AuditLog",

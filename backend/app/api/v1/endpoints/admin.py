@@ -11,7 +11,7 @@ from sqlalchemy import func, or_, select
 
 from app.api.v1.deps import AdminUser, DbSession
 from app.core.config import settings
-from app.models.ai import AIRequest, ProviderSetting
+from app.models.ai import AIFallbackEvent, AIProviderAttempt, AIRequest, ProviderSetting
 from app.models.audit import AuditLog
 from app.models.business import Business, QuoteRequest
 from app.models.catalog import Garment
@@ -25,7 +25,12 @@ from app.models.enums import (
 from app.models.media import MediaAsset
 from app.models.outfit import Outfit
 from app.models.user import User
-from app.schemas.ai import ProviderSettingRead, ProviderSettingUpdate
+from app.schemas.ai import (
+    ProviderOrderUpdate,
+    ProviderSettingRead,
+    ProviderSettingUpdate,
+    ProviderTestResult,
+)
 from app.schemas.auth import AdminUserUpdateRequest, UserRead
 from app.schemas.catalog import GarmentAdminCreate, GarmentAdminUpdate, GarmentListResponse, GarmentRead
 from app.schemas.marketplace import (
@@ -158,8 +163,7 @@ def audit_logs(
     )
 
 
-@router.get("/providers", response_model=list[ProviderSettingRead])
-def list_provider_settings(admin: AdminUser, db: DbSession) -> list[ProviderSettingRead]:
+def _provider_reads(db: DbSession) -> list[ProviderSettingRead]:
     statuses = {info.name: info for info in registry.provider_status(db)}
     rows = {row.provider: row for row in db.scalars(select(ProviderSetting)).all()}
     payload: list[ProviderSettingRead] = []
@@ -168,15 +172,58 @@ def list_provider_settings(admin: AdminUser, db: DbSession) -> list[ProviderSett
         payload.append(
             ProviderSettingRead(
                 provider=name,
-                enabled=row.enabled if row else True,
-                default_text_model=row.default_text_model if row else info.text_model,
-                default_vision_model=row.default_vision_model if row else info.vision_model,
+                label=info.label,
+                role=info.role,
+                enabled=row.enabled if row else info.enabled,
+                priority=row.priority if row else info.priority,
+                default_text_model=(
+                    row.default_text_model if row and row.default_text_model else info.text_model
+                ),
+                default_vision_model=(
+                    row.default_vision_model
+                    if row and row.default_vision_model
+                    else info.vision_model
+                ),
                 notes=row.notes if row else None,
                 configured=info.configured,
                 usable=info.usable,
+                paid=info.paid,
+                free_tier=info.free_tier,
+                supports_vision=info.supports_vision,
+                capabilities=info.capabilities,
+                env_key=info.env_key,
+                reason=info.reason,
+                status=info.status,
+                last_tested_at=row.last_tested_at if row else None,
+                last_test_ok=row.last_test_ok if row else None,
+                last_test_latency_ms=row.last_test_latency_ms if row else None,
+                last_test_error=row.last_test_error if row else None,
             )
         )
+    payload.sort(key=lambda item: item.priority)
     return payload
+
+
+@router.get("/providers", response_model=list[ProviderSettingRead])
+def list_provider_settings(admin: AdminUser, db: DbSession) -> list[ProviderSettingRead]:
+    return _provider_reads(db)
+
+
+def _provider_row(db: DbSession, provider: str) -> ProviderSetting:
+    row = db.scalar(select(ProviderSetting).where(ProviderSetting.provider == provider))
+    if row is None:
+        row = ProviderSetting(
+            provider=provider,
+            enabled=True,
+            priority=registry.DEFAULT_PRIORITY.get(provider, 100),
+        )
+        db.add(row)
+        db.flush()
+    return row
+
+
+def _provider_read(db: DbSession, provider: str) -> ProviderSettingRead:
+    return next(item for item in _provider_reads(db) if item.provider == provider)
 
 
 @router.put("/providers/{provider}", response_model=ProviderSettingRead)
@@ -185,51 +232,255 @@ def update_provider_setting(
 ) -> ProviderSettingRead:
     if provider not in {"gemini", "groq", "openai"}:
         raise HTTPException(status_code=404, detail={"code": "unknown_provider", "message": "Unknown provider."})
-    row = db.scalar(select(ProviderSetting).where(ProviderSetting.provider == provider))
-    if row is None:
-        row = ProviderSetting(provider=provider, enabled=True)
-        db.add(row)
+    row = _provider_row(db, provider)
     if payload.enabled is not None:
         row.enabled = payload.enabled
+    if payload.priority is not None:
+        row.priority = payload.priority
     if payload.default_text_model is not None:
-        row.default_text_model = payload.default_text_model
+        row.default_text_model = payload.default_text_model.strip() or None
     if payload.default_vision_model is not None:
-        row.default_vision_model = payload.default_vision_model
+        row.default_vision_model = payload.default_vision_model.strip() or None
     if payload.notes is not None:
         row.notes = payload.notes
     row.updated_by = admin.id
     db.flush()
-    audit.record(db, action="admin.provider_updated", user=admin, resource_type="provider", resource_id=provider,
-                 detail=payload.model_dump(exclude_unset=True))
-    info = next(item for item in registry.provider_status(db) if item.name == provider)
-    return ProviderSettingRead(
-        provider=provider,
-        enabled=row.enabled,
-        default_text_model=row.default_text_model,
-        default_vision_model=row.default_vision_model,
-        notes=row.notes,
-        configured=info.configured,
-        usable=info.usable,
+    audit.record(
+        db,
+        action="admin.provider_updated",
+        user=admin,
+        resource_type="provider",
+        resource_id=provider,
+        detail=payload.model_dump(exclude_unset=True, exclude_none=True),
     )
+    return _provider_read(db, provider)
+
+
+@router.put("/providers-order", response_model=list[ProviderSettingRead])
+def reorder_providers(
+    payload: ProviderOrderUpdate, admin: AdminUser, db: DbSession
+) -> list[ProviderSettingRead]:
+    """Persist the fallback order. Send all provider names, highest priority first."""
+
+    known = {"gemini", "groq", "openai"}
+    if len(set(payload.order)) != len(payload.order) or any(name not in known for name in payload.order):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_order", "message": "Send unique known provider names."},
+        )
+    order = list(payload.order) + [name for name in known if name not in payload.order]
+    for index, name in enumerate(order):
+        row = _provider_row(db, name)
+        row.priority = index * 10
+        row.updated_by = admin.id
+    db.flush()
+    audit.record(
+        db,
+        action="admin.provider_reordered",
+        user=admin,
+        resource_type="provider",
+        detail={"order": order},
+    )
+    return _provider_reads(db)
+
+
+@router.post("/providers/{provider}/test", response_model=ProviderTestResult)
+async def test_provider_connection(
+    provider: str, admin: AdminUser, db: DbSession
+) -> ProviderTestResult:
+    if provider not in {"gemini", "groq", "openai"}:
+        raise HTTPException(status_code=404, detail={"code": "unknown_provider", "message": "Unknown provider."})
+    result = await registry.test_connection(db, provider)
+    audit.record(
+        db,
+        action="admin.provider_tested",
+        user=admin,
+        resource_type="provider",
+        resource_id=provider,
+        detail={"ok": result["ok"], "skipped": result["skipped"]},
+    )
+    db.flush()
+    return ProviderTestResult(**result)
 
 
 @router.get("/ai-usage")
-def ai_usage(admin: AdminUser, db: DbSession) -> dict[str, Any]:
-    since = datetime.now(UTC) - timedelta(days=7)
+def ai_usage(admin: AdminUser, db: DbSession, days: int = Query(default=7, ge=1, le=90)) -> dict[str, Any]:
+    since = datetime.now(UTC) - timedelta(days=days)
     rows = db.execute(
+        select(
+            AIProviderAttempt.provider,
+            AIProviderAttempt.status,
+            func.count(AIProviderAttempt.id),
+            func.coalesce(
+                func.sum(
+                    func.coalesce(AIProviderAttempt.prompt_tokens, 0)
+                    + func.coalesce(AIProviderAttempt.completion_tokens, 0)
+                ),
+                0,
+            ),
+            func.coalesce(func.sum(AIProviderAttempt.estimated_cost_usd), 0),
+            func.avg(AIProviderAttempt.latency_ms),
+        )
+        .where(
+            AIProviderAttempt.created_at >= since,
+            AIProviderAttempt.kind != "provider_test",
+        )
+        .group_by(AIProviderAttempt.provider, AIProviderAttempt.status)
+    ).all()
+    providers: dict[str, dict[str, Any]] = {}
+    for provider, attempt_status, count, tokens, cost, latency in rows:
+        entry = providers.setdefault(
+            provider,
+            {
+                "provider": provider,
+                "attempts": 0,
+                "successes": 0,
+                "errors": 0,
+                "skipped": 0,
+                "tokens": 0,
+                "estimated_cost_usd": 0.0,
+                "avg_latency_ms": None,
+            },
+        )
+        entry["attempts"] += int(count)
+        entry["tokens"] += int(tokens or 0)
+        entry["estimated_cost_usd"] = round(entry["estimated_cost_usd"] + float(cost or 0), 8)
+        if attempt_status == "success":
+            entry["successes"] += int(count)
+        elif attempt_status == "skipped":
+            entry["skipped"] += int(count)
+        else:
+            entry["errors"] += int(count)
+        if latency is not None:
+            entry["avg_latency_ms"] = round(float(latency), 1)
+
+    kinds = db.execute(
+        select(AIRequest.kind, func.count(AIRequest.id), func.coalesce(func.sum(AIRequest.estimated_cost_usd), 0))
+        .where(AIRequest.created_at >= since)
+        .group_by(AIRequest.kind)
+    ).all()
+    daily = db.execute(
+        select(
+            func.date(AIProviderAttempt.created_at),
+            AIProviderAttempt.provider,
+            func.count(AIProviderAttempt.id),
+        )
+        .where(
+            AIProviderAttempt.created_at >= since,
+            AIProviderAttempt.kind != "provider_test",
+        )
+        .group_by(func.date(AIProviderAttempt.created_at), AIProviderAttempt.provider)
+        .order_by(func.date(AIProviderAttempt.created_at))
+    ).all()
+    legacy_breakdown = db.execute(
         select(AIRequest.kind, AIRequest.provider, AIRequest.status, func.count(AIRequest.id))
         .where(AIRequest.created_at >= since)
         .group_by(AIRequest.kind, AIRequest.provider, AIRequest.status)
     ).all()
+    fallback_count = db.scalar(
+        select(func.count(AIFallbackEvent.id)).where(AIFallbackEvent.created_at >= since)
+    ) or 0
+    total_cost = sum(entry["estimated_cost_usd"] for entry in providers.values())
     return {
-        "window_days": 7,
-        "breakdown": [
-            {"kind": row[0], "provider": row[1], "status": row[2], "count": int(row[3])} for row in rows
+        "window_days": days,
+        "providers": sorted(providers.values(), key=lambda entry: entry["provider"]),
+        "by_kind": [
+            {"kind": kind, "requests": int(count), "estimated_cost_usd": round(float(cost or 0), 8)}
+            for kind, count, cost in kinds
         ],
+        "breakdown": [
+            {
+                "kind": kind,
+                "provider": provider,
+                "status": status,
+                "count": int(count),
+            }
+            for kind, provider, status, count in legacy_breakdown
+        ],
+        "daily": [
+            {"date": str(day), "provider": provider, "attempts": int(count)}
+            for day, provider, count in daily
+        ],
+        "fallback_events": int(fallback_count),
+        "totals": {
+            "attempts": sum(entry["attempts"] for entry in providers.values()),
+            "tokens": sum(entry["tokens"] for entry in providers.values()),
+            "estimated_cost_usd": round(total_cost, 8),
+        },
         "limits": {
             "daily_requests_per_user": settings.ai_daily_request_limit,
+            "daily_tokens_per_user": settings.ai_daily_token_limit,
+            "max_provider_attempts": settings.ai_max_provider_attempts,
+            "provider_retries": settings.ai_provider_retries,
+            "request_timeout_seconds": settings.ai_request_timeout,
+            "paid_usage_enabled": settings.ai_paid_usage_enabled,
         },
-        "note": "Counts include rule-based (provider=local) responses, which consume no provider quota.",
+        "note": (
+            "Cost values are approximate list-price estimates, not invoices. Free tiers may bill "
+            "nothing. Prompts and API keys are never stored. Admin connection probes are excluded "
+            "from usage totals."
+        ),
+    }
+
+
+@router.get("/ai-errors")
+def ai_errors(
+    admin: AdminUser, db: DbSession, days: int = Query(default=7, ge=1, le=90), limit: int = Query(default=50, ge=1, le=200)
+) -> dict[str, Any]:
+    since = datetime.now(UTC) - timedelta(days=days)
+    rows = db.scalars(
+        select(AIProviderAttempt)
+        .where(AIProviderAttempt.created_at >= since, AIProviderAttempt.status != "success")
+        .order_by(AIProviderAttempt.created_at.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "window_days": days,
+        "items": [
+            {
+                "id": str(row.id),
+                "provider": row.provider,
+                "kind": row.kind,
+                "model": row.model,
+                "status": row.status,
+                "retryable": row.retryable,
+                "error_code": row.error_code,
+                "error": row.error,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ],
+        "total": len(rows),
+    }
+
+
+@router.get("/ai-fallbacks")
+def ai_fallbacks(
+    admin: AdminUser, db: DbSession, days: int = Query(default=7, ge=1, le=90), limit: int = Query(default=50, ge=1, le=200)
+) -> dict[str, Any]:
+    since = datetime.now(UTC) - timedelta(days=days)
+    rows = db.scalars(
+        select(AIFallbackEvent)
+        .where(AIFallbackEvent.created_at >= since)
+        .order_by(AIFallbackEvent.created_at.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "window_days": days,
+        "items": [
+            {
+                "id": str(row.id),
+                "kind": row.kind,
+                "from_provider": row.from_provider,
+                "to_provider": row.to_provider,
+                "reason": row.reason,
+                "retryable": row.retryable,
+                "status_code": row.status_code,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ],
+        "total": len(rows),
     }
 
 
@@ -274,10 +525,19 @@ def all_requests(admin: AdminUser, db: DbSession, status_filter: str | None = Qu
 
 @router.delete("/providers/{provider}", status_code=status.HTTP_204_NO_CONTENT)
 def reset_provider_override(provider: str, admin: AdminUser, db: DbSession) -> Response:
+    if provider not in {"gemini", "groq", "openai"}:
+        raise HTTPException(status_code=404, detail={"code": "unknown_provider", "message": "Unknown provider."})
     row = db.scalar(select(ProviderSetting).where(ProviderSetting.provider == provider))
     if row is not None:
         db.delete(row)
         db.flush()
+        audit.record(
+            db,
+            action="admin.provider_reset",
+            user=admin,
+            resource_type="provider",
+            resource_id=provider,
+        )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

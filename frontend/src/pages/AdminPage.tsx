@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '@/lib/api'
 import { fetchers, qk } from '@/lib/queries'
@@ -16,6 +16,7 @@ import type {
   AuditLogEntry,
   Business,
   ProviderSetting,
+  ProviderTestResult,
   QuoteRequest,
   UserRole,
 } from '@/lib/types'
@@ -84,7 +85,7 @@ function Overview() {
   }
 
   const data: AdminStats = stats.data
-  const breakdown = (usage.data?.breakdown as { kind: string; provider: string; status: string; count: number }[]) ?? []
+  const breakdown = usage.data?.by_kind ?? []
 
   return (
     <div className="space-y-6">
@@ -123,25 +124,23 @@ function Overview() {
             <table className="mt-3 w-full text-xs">
               <thead>
                 <tr className="border-b border-line text-left text-[0.5625rem] uppercase tracking-[0.12em] text-ink-muted">
-                  <th className="py-1.5">Kind</th>
-                  <th className="py-1.5">Provider</th>
-                  <th className="py-1.5">Status</th>
-                  <th className="py-1.5 text-right">Count</th>
+                  <th className="py-1.5">Task</th>
+                  <th className="py-1.5 text-right">Requests</th>
+                  <th className="py-1.5 text-right">Est. value</th>
                 </tr>
               </thead>
               <tbody>
                 {breakdown.map((row) => (
-                  <tr key={`${row.kind}-${row.provider}-${row.status}`} className="border-b border-line/50">
-                    <td className="py-1.5">{titleCase(row.kind)}</td>
-                    <td className="py-1.5">{titleCase(row.provider)}</td>
-                    <td className="py-1.5">{titleCase(row.status)}</td>
-                    <td className="py-1.5 text-right">{row.count}</td>
+                  <tr key={row.kind} className="border-b border-line/50">
+                    <td className="py-1.5">{titleCase(row.kind.replace(/_/g, ' '))}</td>
+                    <td className="py-1.5 text-right">{row.requests}</td>
+                    <td className="py-1.5 text-right">{formatUsd(row.estimated_cost_usd)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-          <p className="mt-3 text-[0.625rem] leading-relaxed text-ink-muted">{usage.data?.note as string}</p>
+          <p className="mt-3 text-[0.625rem] leading-relaxed text-ink-muted">{usage.data?.note}</p>
         </section>
       </div>
     </div>
@@ -260,99 +259,458 @@ function Users() {
   )
 }
 
-function Providers() {
+function formatUsd(value: number | null | undefined): string {
+  const amount = value ?? 0
+  if (amount === 0) return '$0.00'
+  if (amount < 0.01) return `$${amount.toFixed(5)}`
+  return `$${amount.toFixed(4)}`
+}
+
+function providerTone(provider: ProviderSetting): 'olive' | 'gold' | 'neutral' | 'clay' {
+  if (provider.usable) return 'olive'
+  if (provider.status === 'paid-gate') return 'gold'
+  if (!provider.configured) return 'neutral'
+  if (!provider.enabled) return 'neutral'
+  return 'gold'
+}
+
+function providerStatusLabel(provider: ProviderSetting): string {
+  if (provider.usable) return 'Routing'
+  if (provider.status === 'paid-gate') return 'Paid gate'
+  if (!provider.configured) return 'No key'
+  if (!provider.enabled) return 'Disabled'
+  return 'Configured'
+}
+
+function ProviderCard({
+  provider,
+  position,
+  total,
+  onMove,
+  moving,
+}: {
+  provider: ProviderSetting
+  position: number
+  total: number
+  onMove: (direction: -1 | 1) => void
+  moving: boolean
+}) {
   const queryClient = useQueryClient()
-  const providers = useQuery({ queryKey: qk.adminProviders, queryFn: fetchers.adminProviders })
+  const [textModel, setTextModel] = useState(provider.default_text_model ?? '')
+  const [visionModel, setVisionModel] = useState(provider.default_vision_model ?? '')
+  const [testResult, setTestResult] = useState<ProviderTestResult | null>(null)
+
+  useEffect(() => {
+    setTextModel(provider.default_text_model ?? '')
+    setVisionModel(provider.default_vision_model ?? '')
+  }, [provider.default_text_model, provider.default_vision_model])
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: qk.adminProviders })
+    queryClient.invalidateQueries({ queryKey: qk.aiErrors })
+    queryClient.invalidateQueries({ queryKey: qk.aiFallbacks })
+    queryClient.invalidateQueries({ queryKey: qk.aiUsage })
+    queryClient.invalidateQueries({ queryKey: qk.capabilities })
+    queryClient.invalidateQueries({ queryKey: qk.providers })
+  }
 
   const update = useMutation({
-    mutationFn: ({ provider, payload }: { provider: string; payload: Record<string, unknown> }) =>
-      api.put<ProviderSetting>(`/admin/providers/${provider}`, payload),
+    mutationFn: (payload: Record<string, unknown>) =>
+      api.put<ProviderSetting>(`/admin/providers/${provider.provider}`, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: qk.adminProviders })
-      queryClient.invalidateQueries({ queryKey: qk.capabilities })
-      queryClient.invalidateQueries({ queryKey: qk.providers })
+      invalidate()
       toast.success('Provider settings saved')
     },
     onError: (error) =>
       toast.error('Settings not saved', error instanceof ApiError ? error.message : 'Try again.'),
   })
 
+  const test = useMutation({
+    mutationFn: () => fetchers.testProvider(provider.provider),
+    onSuccess: (result) => {
+      setTestResult(result)
+      invalidate()
+      if (result.ok) toast.success(`${provider.label} connection verified`)
+      else toast.error('Connection test failed', result.error ?? 'Provider did not respond.')
+    },
+    onError: (error) =>
+      toast.error('Connection test failed', error instanceof ApiError ? error.message : 'Try again.'),
+  })
+
+  const reset = useMutation({
+    mutationFn: () => api.delete(`/admin/providers/${provider.provider}`),
+    onSuccess: () => {
+      invalidate()
+      setTestResult(null)
+      toast.success('Overrides cleared')
+    },
+    onError: () => toast.error('Could not reset the provider'),
+  })
+
+  const dirty =
+    (provider.default_text_model ?? '') !== textModel.trim() ||
+    (provider.supports_vision && (provider.default_vision_model ?? '') !== visionModel.trim())
+
+  const lastTest = testResult ?? {
+    ok: provider.last_test_ok,
+    error: provider.last_test_error,
+    latency_ms: provider.last_test_latency_ms,
+    model: null,
+    skipped: false,
+  }
+
+  return (
+    <section className="flex h-full flex-col border border-line bg-paper p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="label-xs">Position {position + 1}</p>
+          <h2 className="mt-1 font-display text-xl">{provider.label}</h2>
+          <p className="mt-1 text-[0.625rem] uppercase tracking-[0.12em] text-ink-muted">
+            {provider.role}
+            {provider.free_tier ? ' · free tier' : ' · billed'}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <Badge tone={providerTone(provider)}>{providerStatusLabel(provider)}</Badge>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label={`Move ${provider.provider} up`}
+              disabled={position === 0 || moving}
+              onClick={() => onMove(-1)}
+            >
+              ↑
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label={`Move ${provider.provider} down`}
+              disabled={position === total - 1 || moving}
+              onClick={() => onMove(1)}
+            >
+              ↓
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {provider.reason && (
+        <p className="mt-3 border-l-2 border-clay/40 pl-2 text-[0.6875rem] leading-relaxed text-clay">
+          {provider.reason}
+        </p>
+      )}
+
+      <dl className="mt-3 space-y-1.5 border-y border-line py-3 text-xs">
+        <div className="flex justify-between gap-2">
+          <dt className="text-ink-muted">Environment key</dt>
+          <dd className="font-mono text-[0.6875rem]">
+            {provider.env_key ?? '—'} · {provider.configured ? 'present' : 'missing'}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-ink-muted">Capabilities</dt>
+          <dd className="text-right">
+            {provider.capabilities.length} tasks · {provider.supports_vision ? 'vision' : 'text only'}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-3 space-y-2.5">
+        <Input
+          label="Text model"
+          value={textModel}
+          onChange={(event) => setTextModel(event.target.value)}
+          maxLength={120}
+          placeholder="Provider default"
+        />
+        {provider.supports_vision ? (
+          <Input
+            label="Vision model"
+            value={visionModel}
+            onChange={(event) => setVisionModel(event.target.value)}
+            maxLength={120}
+            placeholder="Provider default"
+          />
+        ) : (
+          <p className="border border-dashed border-line px-3 py-2.5 text-xs text-ink-muted">
+            This provider is text-only here; it is never offered for image analysis.
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="primary"
+            loading={update.isPending}
+            disabled={!dirty}
+            onClick={() =>
+              update.mutate({
+                default_text_model: textModel.trim(),
+                default_vision_model: provider.supports_vision ? visionModel.trim() : null,
+              })
+            }
+          >
+            Save models
+          </Button>
+          <Button size="sm" variant="secondary" loading={test.isPending} onClick={() => test.mutate()}>
+            Test connection
+          </Button>
+        </div>
+      </div>
+
+      <Toggle
+        checked={provider.enabled}
+        disabled={update.isPending}
+        onChange={(enabled) => update.mutate({ enabled })}
+        label="Enabled for routing"
+        description="Disabling removes this provider from the fallback chain. Credentials stay in the environment."
+      />
+
+      {provider.provider === 'openai' && (
+        <p className="border border-gold/30 bg-gold/10 px-3 py-2 text-[0.625rem] leading-relaxed text-[#7a5f31]">
+          Billed provider. A connection test and live routing both require OPENAI_ENABLED and
+          AI_PAID_USAGE_ENABLED on the server. Enabling the toggle alone cannot start billing.
+        </p>
+      )}
+
+      {(lastTest.ok !== null && lastTest.ok !== undefined) || lastTest.error ? (
+        <div className="mt-3 border border-line bg-bone/40 px-3 py-2 text-[0.625rem] leading-relaxed">
+          <p className="font-medium">
+            {lastTest.ok ? 'Last test passed' : 'Last test failed'}
+            {lastTest.latency_ms ? ` · ${Math.round(lastTest.latency_ms)} ms` : ''}
+          </p>
+          {lastTest.error && <p className="mt-1 break-words text-clay">{lastTest.error}</p>}
+          {provider.last_tested_at && (
+            <p className="mt-1 text-ink-muted">Checked {formatDateTime(provider.last_tested_at)}</p>
+          )}
+        </div>
+      ) : null}
+
+      <div className="mt-auto pt-3">
+        <Button
+          size="sm"
+          variant="ghost"
+          loading={reset.isPending}
+          onClick={() => {
+            if (window.confirm(`Reset ${provider.provider} overrides to environment defaults?`)) {
+              reset.mutate()
+            }
+          }}
+        >
+          Reset overrides
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+function Providers() {
+  const queryClient = useQueryClient()
+  const providers = useQuery({ queryKey: qk.adminProviders, queryFn: fetchers.adminProviders })
+  const usage = useQuery({ queryKey: qk.aiUsage, queryFn: fetchers.aiUsage })
+  const errors = useQuery({ queryKey: qk.aiErrors, queryFn: fetchers.aiErrors })
+  const fallbacks = useQuery({ queryKey: qk.aiFallbacks, queryFn: fetchers.aiFallbacks })
+
+  const reorder = useMutation({
+    mutationFn: (order: string[]) => fetchers.reorderProviders(order),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.adminProviders })
+      queryClient.invalidateQueries({ queryKey: qk.capabilities })
+      queryClient.invalidateQueries({ queryKey: qk.providers })
+      toast.success('Fallback order updated')
+    },
+    onError: (error) =>
+      toast.error('Order not saved', error instanceof ApiError ? error.message : 'Try again.'),
+  })
+
   if (providers.isLoading) return <LoadingBlock label="Loading providers" rows={3} />
-  if (providers.isError) return <ErrorState title="Providers unavailable" onRetry={() => providers.refetch()} />
+  if (providers.isError)
+    return <ErrorState title="Providers unavailable" onRetry={() => providers.refetch()} />
+
+  const ordered = [...(providers.data ?? [])].sort((a, b) => a.priority - b.priority)
+
+  const move = (index: number, direction: -1 | 1) => {
+    const next = [...ordered]
+    const target = index + direction
+    if (target < 0 || target >= next.length) return
+    ;[next[index], next[target]] = [next[target], next[index]]
+    reorder.mutate(next.map((provider) => provider.provider))
+  }
 
   return (
     <div className="space-y-5">
       <Notice tone="warn" title="Cost guardrails">
-        Only free-tier providers are enabled by default. OpenAI is disabled unless an administrator
-        explicitly enables it and the server has a key; the platform never purchases capacity.
+        Gemini and Groq run on free tiers. OpenAI is billed and stays inert unless both
+        OPENAI_ENABLED and AI_PAID_USAGE_ENABLED are set on the server. There is no automatic
+        billing activation and no paid capacity is purchased by the studio.
       </Notice>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {(providers.data ?? []).map((provider) => (
-          <section key={provider.provider} className="border border-line bg-paper p-5">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="font-display text-xl">{titleCase(provider.provider)}</h2>
-              <Badge tone={provider.usable ? 'olive' : provider.configured ? 'gold' : 'neutral'}>
-                {provider.usable ? 'Routing' : provider.configured ? 'Configured, off' : 'No key'}
-              </Badge>
-            </div>
-
-            <dl className="mt-3 space-y-1.5 text-xs">
-              <div className="flex justify-between gap-2">
-                <dt className="text-ink-muted">Text model</dt>
-                <dd className="text-right">{provider.default_text_model ?? '—'}</dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-ink-muted">Vision model</dt>
-                <dd className="text-right">{provider.default_vision_model ?? '—'}</dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-ink-muted">Env key</dt>
-                <dd>{provider.configured ? 'present' : 'missing'}</dd>
-              </div>
-            </dl>
-
-            <label className="mt-4 flex items-center justify-between border-t border-line pt-3 text-xs">
-              <span>Enabled for routing</span>
-              <input
-                type="checkbox"
-                checked={provider.enabled}
-                onChange={(event) =>
-                  update.mutate({ provider: provider.provider, payload: { enabled: event.target.checked } })
-                }
-                className="size-4"
-                aria-label={`Enable ${provider.provider}`}
-              />
-            </label>
-
-            {provider.provider === 'openai' && provider.enabled && (
-              <p className="mt-2 text-[0.625rem] leading-relaxed text-clay">
-                OpenAI is a billed service. Enabling it means requests may incur charges on the
-                server’s account.
-              </p>
-            )}
-
-            <div className="mt-3">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  if (window.confirm(`Reset ${provider.provider} overrides to environment defaults?`)) {
-                    api
-                      .delete(`/admin/providers/${provider.provider}`)
-                      .then(() => {
-                        queryClient.invalidateQueries({ queryKey: qk.adminProviders })
-                        toast.success('Overrides cleared')
-                      })
-                      .catch(() => toast.error('Could not reset the provider'))
-                  }
-                }}
-              >
-                Reset overrides
-              </Button>
-            </div>
-          </section>
+        {ordered.map((provider, index) => (
+          <ProviderCard
+            key={provider.provider}
+            provider={provider}
+            position={index}
+            total={ordered.length}
+            moving={reorder.isPending}
+            onMove={(direction) => move(index, direction)}
+          />
         ))}
+      </div>
+
+      <section className="border border-line bg-paper p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow">Provider telemetry</p>
+            <h2 className="font-display text-xl">Usage · last {usage.data?.window_days ?? 7} days</h2>
+          </div>
+          <div className="flex gap-4 text-right text-xs">
+            <div>
+              <p className="text-ink-muted">Attempts</p>
+              <p className="font-display text-2xl">{usage.data?.totals.attempts ?? '—'}</p>
+            </div>
+            <div>
+              <p className="text-ink-muted">Tokens</p>
+              <p className="font-display text-2xl">
+                {(usage.data?.totals.tokens ?? 0).toLocaleString('en-US')}
+              </p>
+            </div>
+            <div>
+              <p className="text-ink-muted">Est. list value</p>
+              <p className="font-display text-2xl">{formatUsd(usage.data?.totals.estimated_cost_usd)}</p>
+            </div>
+            <div>
+              <p className="text-ink-muted">Fallbacks</p>
+              <p className="font-display text-2xl">{usage.data?.fallback_events ?? 0}</p>
+            </div>
+          </div>
+        </div>
+
+        {usage.isLoading && <LoadingBlock label="Loading AI usage" rows={2} />}
+        {usage.isError && <ErrorState title="Usage unavailable" onRetry={() => usage.refetch()} />}
+        {usage.data && (
+          <>
+            {usage.data.providers.length === 0 ? (
+              <EmptyState
+                title="No provider attempts yet"
+                description="Requests that run on the offline rule engine do not create provider usage."
+              />
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <caption className="sr-only">AI usage by provider</caption>
+                  <thead className="border-b border-line text-[0.625rem] uppercase tracking-[0.12em] text-ink-muted">
+                    <tr>
+                      <th className="py-2 pr-3">Provider</th>
+                      <th className="py-2 pr-3 text-right">Success</th>
+                      <th className="py-2 pr-3 text-right">Errors</th>
+                      <th className="py-2 pr-3 text-right">Skipped</th>
+                      <th className="py-2 pr-3 text-right">Tokens</th>
+                      <th className="py-2 pr-3 text-right">Avg latency</th>
+                      <th className="py-2 text-right">Est. list value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usage.data.providers.map((entry) => (
+                      <tr key={entry.provider} className="border-b border-line/60">
+                        <td className="py-2 pr-3">{titleCase(entry.provider)}</td>
+                        <td className="py-2 pr-3 text-right">{entry.successes}</td>
+                        <td className="py-2 pr-3 text-right">{entry.errors}</td>
+                        <td className="py-2 pr-3 text-right">{entry.skipped}</td>
+                        <td className="py-2 pr-3 text-right">{entry.tokens.toLocaleString('en-US')}</td>
+                        <td className="py-2 pr-3 text-right">
+                          {entry.avg_latency_ms ? `${Math.round(entry.avg_latency_ms)} ms` : '—'}
+                        </td>
+                        <td className="py-2 text-right">{formatUsd(entry.estimated_cost_usd)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="mt-4 grid gap-2 text-[0.6875rem] text-ink-muted sm:grid-cols-2">
+              <p>
+                Limits: {usage.data.limits.daily_requests_per_user} requests and{' '}
+                {usage.data.limits.daily_tokens_per_user.toLocaleString('en-US')} tokens per user/day ·{' '}
+                {usage.data.limits.max_provider_attempts} provider attempts max ·{' '}
+                {usage.data.limits.request_timeout_seconds}s timeout.
+              </p>
+              <p>{usage.data.note}</p>
+            </div>
+          </>
+        )}
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="border border-line bg-paper p-5">
+          <h2 className="font-display text-xl">Recent provider errors</h2>
+          <p className="mt-1 text-xs text-ink-muted">
+            Sanitised errors only. Prompts, images and credentials are never stored.
+          </p>
+          {errors.isLoading && <LoadingBlock label="Loading errors" rows={2} />}
+          {errors.isError && <ErrorState title="Errors unavailable" onRetry={() => errors.refetch()} />}
+          {errors.data && errors.data.items.length === 0 && (
+            <p className="mt-4 border border-dashed border-line px-3 py-6 text-center text-xs text-ink-muted">
+              No provider errors in this window.
+            </p>
+          )}
+          {errors.data && errors.data.items.length > 0 && (
+            <ul className="mt-3 space-y-2">
+              {errors.data.items.slice(0, 12).map((entry) => (
+                <li key={entry.id} className="border-b border-line/60 pb-2 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">
+                      {titleCase(entry.provider)} · {entry.kind}
+                    </span>
+                    <Badge tone={entry.retryable ? 'gold' : 'danger'}>
+                      {entry.retryable ? 'retryable' : 'terminal'}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 break-words text-[0.625rem] text-clay">{entry.error}</p>
+                  <p className="mt-0.5 text-[0.5625rem] text-ink-muted">
+                    {entry.error_code ?? 'error'} · {formatDateTime(entry.created_at)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="border border-line bg-paper p-5">
+          <h2 className="font-display text-xl">Fallback events</h2>
+          <p className="mt-1 text-xs text-ink-muted">
+            Every provider switch is recorded with the failure reason and HTTP status.
+          </p>
+          {fallbacks.isLoading && <LoadingBlock label="Loading fallbacks" rows={2} />}
+          {fallbacks.isError && (
+            <ErrorState title="Fallback events unavailable" onRetry={() => fallbacks.refetch()} />
+          )}
+          {fallbacks.data && fallbacks.data.items.length === 0 && (
+            <p className="mt-4 border border-dashed border-line px-3 py-6 text-center text-xs text-ink-muted">
+              No fallback events in this window.
+            </p>
+          )}
+          {fallbacks.data && fallbacks.data.items.length > 0 && (
+            <ul className="mt-3 space-y-2">
+              {fallbacks.data.items.slice(0, 12).map((entry) => (
+                <li key={entry.id} className="border-b border-line/60 pb-2 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">
+                      {titleCase(entry.from_provider)} → {titleCase(entry.to_provider)}
+                    </span>
+                    <span className="text-[0.625rem] text-ink-muted">{entry.kind}</span>
+                  </div>
+                  <p className="mt-1 break-words text-[0.625rem] text-clay">{entry.reason}</p>
+                  <p className="mt-0.5 text-[0.5625rem] text-ink-muted">
+                    {entry.status_code ? `HTTP ${entry.status_code} · ` : ''}
+                    {entry.retryable ? 'retryable · ' : ''}
+                    {formatDateTime(entry.created_at)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   )

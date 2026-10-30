@@ -1,6 +1,10 @@
 import { api } from '@/lib/api'
 import type {
   AICapabilities,
+  AIErrorEntry,
+  AIFallbackEntry,
+  AITaskResult,
+  AIUsage,
   AdminList,
   AdminStats,
   AdminUser,
@@ -20,6 +24,7 @@ import type {
   Profile,
   ProviderSetting,
   ProviderStatus,
+  ProviderTestResult,
   PublicConfig,
   QuoteRequest,
   Business,
@@ -57,6 +62,8 @@ export const qk = {
     ['admin', 'catalog', params] as const,
   adminBusinesses: ['admin', 'businesses'] as const,
   aiUsage: ['admin', 'ai-usage'] as const,
+  aiErrors: ['admin', 'ai-errors'] as const,
+  aiFallbacks: ['admin', 'ai-fallbacks'] as const,
 }
 
 export const fetchers = {
@@ -117,11 +124,26 @@ export const fetchers = {
     api.get<{ items: QuoteRequest[]; total: number }>('/admin/requests'),
   adminBusinesses: () =>
     api.get<{ items: Business[]; total: number }>('/admin/businesses'),
-  aiUsage: () => api.get<Record<string, unknown>>('/admin/ai-usage'),
+  aiUsage: () => api.get<AIUsage>('/admin/ai-usage'),
+  aiErrors: () => api.get<{ items: AIErrorEntry[]; total: number }>('/admin/ai-errors'),
+  aiFallbacks: () => api.get<{ items: AIFallbackEntry[]; total: number }>('/admin/ai-fallbacks'),
+  testProvider: (provider: string) =>
+    api.post<ProviderTestResult>(`/admin/providers/${provider}/test`),
+  reorderProviders: (order: string[]) =>
+    api.put<ProviderSetting[]>('/admin/providers-order', { order }),
   assistant: (payload: {
     message: string
     history?: { role: 'user' | 'assistant'; content: string }[]
     gender_style?: string
     occasion?: string
   }) => api.post<AssistantResponse>('/ai/assistant', payload),
+  aiTask: (
+    task: string,
+    payload: {
+      prompt: string
+      context?: Record<string, unknown>
+      image_asset_id?: string
+      max_tokens?: number
+    },
+  ) => api.post<AITaskResult>(`/ai/tasks/${task}`, payload),
 }
