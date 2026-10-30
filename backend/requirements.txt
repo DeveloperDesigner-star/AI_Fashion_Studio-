@@ -1,0 +1,17 @@
+# AI Fashion Studio — backend runtime dependencies
+# Pinned to versions verified in CI/development (Python 3.11+).
+fastapi==0.121.2
+uvicorn[standard]==0.38.0
+pydantic==2.12.4
+pydantic-settings==2.12.0
+email-validator==2.3.0
+SQLAlchemy==2.0.44
+alembic==1.17.1
+psycopg2-binary==2.9.11
+python-jose[cryptography]==3.5.0
+pwdlib[argon2]==0.3.0
+python-multipart==0.0.20
+Pillow==11.3.0
+opencv-python-headless==5.0.0
+numpy==2.4.6
+httpx==0.28.1

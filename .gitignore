@@ -1,0 +1,53 @@
+# ---- Secrets & environment ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Python ----
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+pip-wheel-metadata/
+
+# ---- Database / runtime data ----
+*.db
+*.sqlite3
+backend/var/
+!backend/var/.gitkeep
+backend/var/uploads/*
+!backend/var/uploads/.gitkeep
+backend/media/
+pgdata/
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+coverage/
+playwright-report/
+test-results/
+blob-report/
+frontend/.tsbuildinfo
+
+# ---- Editors / OS ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# ---- Generated exports ----
+exports/
+tmp/
