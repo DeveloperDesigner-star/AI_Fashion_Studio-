@@ -243,12 +243,17 @@ export function DesignsPage() {
 
               <div className="mt-auto flex flex-wrap gap-1.5 pt-2">
                 {design.garment && (
+                  <LinkButton to={`/editor/${design.id}`} size="sm" variant="outline">
+                    Studio
+                  </LinkButton>
+                )}
+                {design.garment && (
                   <LinkButton
                     to={`/garment/${design.garment.slug}?design=${design.id}`}
                     size="sm"
-                    variant="outline"
+                    variant="ghost"
                   >
-                    Edit
+                    Quick edit
                   </LinkButton>
                 )}
                 <Button

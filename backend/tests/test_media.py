@@ -95,7 +95,7 @@ def test_print_sheet_generation_creates_export(client: TestClient, auth: dict[st
 
     download = client.get(body["download_url"], headers=auth)
     assert download.status_code == 200
-    assert download.headers["content-type"] == "image/jpeg"
+    assert download.headers["content-type"] == "image/png"
 
 
 def test_print_sheet_requires_print_artwork(client: TestClient, auth: dict[str, str]) -> None:

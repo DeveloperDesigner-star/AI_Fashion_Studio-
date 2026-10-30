@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db.catalog_data import LOOKS as CATALOG_LOOKS
 from app.db.catalog_data import build_catalog_garments
+from app.db.component_templates import components_for
 from app.models.catalog import Garment, Look
 
 ALL_FABRICS = [
@@ -692,6 +693,7 @@ def _all_garments() -> list[dict[str, Any]]:
     merged = legacy + [entry for entry in generated if entry["slug"] not in seen]
     for entry in merged:
         _legacy_defaults(entry)
+        entry["components"] = components_for(entry)
     return merged
 
 

@@ -265,17 +265,79 @@ OCCASIONS: tuple[str, ...] = (
 
 PATTERNS: tuple[str, ...] = (
     "solid",
+    "printed",
+    "embroidered",
     "stripes",
     "checks",
     "houndstooth",
     "floral",
     "paisley",
+    "traditional",
     "geometric",
     "polka",
     "animal",
     "gradient",
     "custom_print",
 )
+
+# Pattern families shown in the studio library.
+PATTERN_FAMILIES: tuple[str, ...] = (
+    "plain",
+    "printed",
+    "embroidered",
+    "floral",
+    "geometric",
+    "traditional",
+    "custom",
+)
+
+# Which pattern-piece shape each component is drawn as in the editor.
+COMPONENT_KINDS: tuple[str, ...] = (
+    "front_panel",
+    "back_panel",
+    "bodice_front",
+    "bodice_back",
+    "sleeve",
+    "neckline",
+    "collar",
+    "lapel",
+    "cuff",
+    "placket",
+    "pocket",
+    "border",
+    "hem",
+    "skirt",
+    "pleats",
+    "trouser",
+    "waistband",
+    "dupatta",
+    "hood",
+    "ribbing",
+    "lining",
+    "embroidery",
+    "waistcoat_front",
+    "waistcoat_back",
+    "upper",
+    "sole",
+    "fastening",
+    "bag_body",
+    "strap",
+    "hardware",
+    "dial",
+    "bezel",
+    "band",
+    "buckle",
+    "crown",
+    "brim",
+    "tassel",
+    "frame",
+    "lens",
+    "jewel_body",
+    "stone",
+    "generic",
+)
+
+BLEND_MODES: tuple[str, ...] = ("normal", "multiply", "screen", "overlay", "soft-light")
 
 EMBROIDERIES: tuple[str, ...] = (
     "none",

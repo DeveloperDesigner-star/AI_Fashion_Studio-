@@ -225,3 +225,116 @@ def build_print_sheet(
     }
     return buffer.getvalue(), meta
 
+
+
+def remove_background(image_path: Path, *, feather: int = 3) -> tuple[bytes, dict[str, Any]]:
+    """Cut the subject out of a photo with OpenCV GrabCut (no paid API).
+
+    Returns PNG bytes with an alpha channel plus objective stats so the UI can
+    tell the user what happened instead of pretending the cut is perfect.
+    """
+
+    try:
+        with Image.open(image_path) as image:
+            original = ImageOps.exif_transpose(image).convert("RGB")
+    except (OSError, ValueError) as exc:
+        raise ImagingError("The image could not be read for background removal.") from exc
+
+    original.thumbnail((1400, 1400), Image.Resampling.LANCZOS)
+    rgb = np.array(original)
+    height, width = rgb.shape[:2]
+    if min(height, width) < 24:
+        raise ImagingError("The image is too small to remove a background.")
+
+    mask = np.zeros((height, width), np.uint8)
+    border = max(2, int(min(height, width) * 0.02))
+    mask[:border, :] = cv2.GC_PR_BGD
+    mask[-border:, :] = cv2.GC_PR_BGD
+    mask[:, :border] = cv2.GC_PR_BGD
+    mask[:, -border:] = cv2.GC_PR_BGD
+    mask[border:-border, border:-border] = cv2.GC_PR_FGD
+    inner = int(min(height, width) * 0.14)
+    mask[inner : height - inner, inner : width - inner] = cv2.GC_FGD
+
+    bgd_model = np.zeros((1, 65), np.float64)
+    fgd_model = np.zeros((1, 65), np.float64)
+    try:
+        cv2.grabCut(
+            cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
+            mask,
+            None,
+            bgd_model,
+            fgd_model,
+            4,
+            cv2.GC_INIT_WITH_MASK,
+        )
+        subject = np.isin(mask, (cv2.GC_FGD, cv2.GC_PR_FGD)).astype(np.uint8) * 255
+    except cv2.error as exc:  # pragma: no cover - defensive for odd inputs
+        raise ImagingError("Background removal failed on this image.") from exc
+
+    coverage = float((subject > 0).mean())
+    method = "grabcut"
+    if coverage < 0.04 or coverage > 0.97:
+        # Uniform backgrounds defeat GrabCut; fall back to corner-colour distance.
+        corners = np.concatenate(
+            [
+                rgb[:border, :border].reshape(-1, 3),
+                rgb[:border, -border:].reshape(-1, 3),
+                rgb[-border:, :border].reshape(-1, 3),
+                rgb[-border:, -border:].reshape(-1, 3),
+            ]
+        )
+        reference = np.median(corners, axis=0)
+        distance = np.linalg.norm(rgb.astype(np.float32) - reference, axis=2)
+        subject = np.where(distance > 34, 255, 0).astype(np.uint8)
+        coverage = float((subject > 0).mean())
+        method = "corner_colour"
+
+    if feather:
+        subject = cv2.GaussianBlur(subject, (0, 0), sigmaX=feather)
+    alpha = Image.fromarray(subject)
+    result = original.convert("RGBA")
+    result.putalpha(alpha)
+
+    buffer = io.BytesIO()
+    result.save(buffer, format="PNG", optimize=True)
+    stats = {
+        "method": method,
+        "coverage": round(coverage, 4),
+        "width": width,
+        "height": height,
+        "feathered_px": feather,
+    }
+    return buffer.getvalue(), stats
+
+
+def crop_artwork(
+    image_path: Path, *, x: float, y: float, width: float, height: float
+) -> tuple[bytes, dict[str, Any]]:
+    """Bake a normalised crop into a new PNG, keeping transparency."""
+
+    try:
+        with Image.open(image_path) as image:
+            artwork = ImageOps.exif_transpose(image).convert("RGBA")
+    except (OSError, ValueError) as exc:
+        raise ImagingError("The image could not be read for cropping.") from exc
+
+    image_width, image_height = artwork.size
+    left = int(round(x * image_width))
+    top = int(round(y * image_height))
+    right = max(left + 1, int(round((x + width) * image_width)))
+    bottom = max(top + 1, int(round((y + height) * image_height)))
+    right = min(right, image_width)
+    bottom = min(bottom, image_height)
+    if left >= right or top >= bottom:
+        raise ImagingError("The crop area is outside the image.")
+
+    cropped = artwork.crop((left, top, right, bottom))
+    buffer = io.BytesIO()
+    cropped.save(buffer, format="PNG", optimize=True)
+    return buffer.getvalue(), {
+        "left": left,
+        "top": top,
+        "width": right - left,
+        "height": bottom - top,
+    }

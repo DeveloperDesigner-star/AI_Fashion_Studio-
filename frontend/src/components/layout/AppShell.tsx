@@ -6,6 +6,7 @@ import { ToastViewport } from '@/components/ui/ToastViewport'
 
 export function AppShell() {
   const { pathname } = useLocation()
+  const immersive = pathname.startsWith('/editor/')
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
@@ -23,7 +24,7 @@ export function AppShell() {
       <main id="main" className="flex-1">
         <Outlet />
       </main>
-      <SiteFooter />
+      {!immersive && <SiteFooter />}
       <ToastViewport />
     </div>
   )

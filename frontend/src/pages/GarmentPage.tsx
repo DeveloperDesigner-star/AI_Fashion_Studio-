@@ -29,6 +29,9 @@ import type {
 
 const PATTERNS = [
   'solid',
+  'printed',
+  'embroidered',
+  'traditional',
   'stripes',
   'checks',
   'houndstooth',
@@ -180,6 +183,16 @@ export function GarmentPage() {
       toast.error('Could not save the design', error instanceof ApiError ? error.message : 'Try again in a moment.')
     },
   })
+
+  const openStudio = () => {
+    if (savedDesignId) {
+      navigate(`/editor/${savedDesignId}`)
+      return
+    }
+    saveDesign.mutate(undefined, {
+      onSuccess: (design) => navigate(`/editor/${design.id}`),
+    })
+  }
 
   const uploadPrint = useMutation({
     mutationFn: ({ file, componentId }: { file: File; componentId: string }) =>
@@ -632,6 +645,20 @@ export function GarmentPage() {
                   disabled={printRequired}
                 >
                   {user ? (savedDesignId ? 'Update design' : 'Save design') : 'Sign in to save'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (!user) {
+                      navigate(`/login?next=${encodeURIComponent(`/garment/${garment.slug}`)}`)
+                      return
+                    }
+                    openStudio()
+                  }}
+                  disabled={printRequired}
+                >
+                  Studio layers →
                 </Button>
               </div>
             </div>

@@ -7,14 +7,17 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, select, update
 
 from app.api.v1.deps import CurrentUser, DbSession
 from app.core.config import settings
 from app.core.rate_limit import client_identity, enforce
+from app.models.design import Design
 from app.models.enums import MediaKind, PhotoView
 from app.models.media import MediaAsset
 from app.schemas.media import (
+    CropRequest,
+    DerivedAssetResponse,
     MediaListResponse,
     MediaRead,
     PaletteResponse,
@@ -110,14 +113,23 @@ async def upload_media(
 
     data = await file.read(settings.max_upload_bytes + 1)
     try:
-        stored = storage.save_image(
-            data=data,
-            original_filename=file.filename or "upload.jpg",
-            kind=kind,
-            make_thumbnail=kind != MediaKind.PRINT,
-            min_edge=min_edge,
-            min_portrait_ratio=min_portrait_ratio,
-        )
+        if kind == MediaKind.PRINT:
+            # Print artwork is layered in the studio, so transparency must survive.
+            stored = storage.save_artwork(
+                data=data,
+                original_filename=file.filename or "pattern.png",
+                kind=kind,
+                make_thumbnail=False,
+            )
+        else:
+            stored = storage.save_image(
+                data=data,
+                original_filename=file.filename or "upload.jpg",
+                kind=kind,
+                make_thumbnail=True,
+                min_edge=min_edge,
+                min_portrait_ratio=min_portrait_ratio,
+            )
     except storage.UploadError as exc:
         raise HTTPException(
             status_code=422, detail={"code": exc.code, "message": exc.message}
@@ -178,9 +190,30 @@ def get_media_content(
     return FileResponse(path, media_type=asset.mime_type if not thumbnail else "image/webp", headers=headers)
 
 
+def _design_uses_asset(db, user, asset_id: uuid.UUID) -> bool:
+    """Layers and custom prints store asset ids inside the design JSON."""
+
+    stmt = select(Design.id).where(
+        Design.user_id == user.id,
+        cast(Design.components, String).like(f"%{asset_id}%"),
+    )
+    return db.scalar(stmt.limit(1)) is not None
+
+
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_media(asset_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Response:
     asset = _owned_asset(db, user, asset_id)
+    if asset.kind != MediaKind.EXPORT and _design_uses_asset(db, user, asset_id):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "asset_in_use",
+                "message": "This file is used by a saved design. Remove it from the design first.",
+            },
+        )
+    db.execute(
+        update(Design).where(Design.proof_asset_id == asset_id).values(proof_asset_id=None)
+    )
     storage.delete_file(asset.storage_key)
     storage.delete_file(asset.thumbnail_key)
     db.delete(asset)
@@ -238,7 +271,7 @@ def create_print_sheet(
             detail={"code": "print_failed", "message": getattr(exc, "message", "Could not build the print sheet.")},
         ) from exc
 
-    stored = storage.save_image(
+    stored = storage.save_artwork(
         data=sheet_bytes,
         original_filename=f"print-sheet-{asset_id.hex[:8]}.png",
         kind=MediaKind.EXPORT.value,
@@ -280,4 +313,127 @@ def download_asset(asset_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Fil
         media_type=asset.mime_type,
         filename=asset.original_filename,
         headers={"Cache-Control": "private, no-store"},
+    )
+
+
+DERIVABLE_KINDS = {
+    MediaKind.PHOTO,
+    MediaKind.REFERENCE,
+    MediaKind.CLOTHING,
+    MediaKind.PRINT,
+}
+
+
+def _store_derived(
+    *, db, user, request, data: bytes, filename: str, source: MediaAsset, action: str, meta: dict
+) -> DerivedAssetResponse:
+    stored = storage.save_artwork(
+        data=data, original_filename=filename, kind=MediaKind.PRINT.value, make_thumbnail=True
+    )
+    derived = MediaAsset(
+        user_id=user.id,
+        kind=MediaKind.PRINT.value,
+        original_filename=filename,
+        storage_key=stored.storage_key,
+        thumbnail_key=stored.thumbnail_key,
+        mime_type=stored.mime_type,
+        byte_size=stored.byte_size,
+        width=stored.width,
+        height=stored.height,
+        checksum_sha256=stored.checksum_sha256,
+        is_private=True,
+    )
+    db.add(derived)
+    db.flush()
+    audit.record(
+        db,
+        action=action,
+        user=user,
+        request=request,
+        resource_type="media",
+        resource_id=derived.id,
+        detail={"source_asset_id": str(source.id), **meta},
+    )
+    return DerivedAssetResponse(asset=_to_read(derived), meta=meta)
+
+
+@router.post(
+    "/{asset_id}/remove-background",
+    response_model=DerivedAssetResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def remove_background(
+    asset_id: uuid.UUID, user: CurrentUser, db: DbSession, request: Request
+) -> DerivedAssetResponse:
+    """Create a transparent PNG cut-out with OpenCV GrabCut."""
+
+    asset = _owned_asset(db, user, asset_id)
+    if asset.kind not in DERIVABLE_KINDS:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "wrong_kind",
+                "message": "Background removal works on photos, clothing and print artwork.",
+            },
+        )
+    try:
+        data, meta = imaging.remove_background(storage.path_for(asset.storage_key))
+    except imaging.ImagingError as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": "background_removal_failed", "message": exc.message}
+        ) from exc
+    return _store_derived(
+        db=db,
+        user=user,
+        request=request,
+        data=data,
+        filename=f"cutout-{asset_id.hex[:8]}.png",
+        source=asset,
+        action="media.background_removed",
+        meta=meta,
+    )
+
+
+@router.post("/{asset_id}/crop", response_model=DerivedAssetResponse, status_code=status.HTTP_201_CREATED)
+def crop_media(
+    asset_id: uuid.UUID,
+    payload: CropRequest,
+    user: CurrentUser,
+    db: DbSession,
+    request: Request,
+) -> DerivedAssetResponse:
+    """Bake the crop rectangle into a new transparent artwork asset."""
+
+    asset = _owned_asset(db, user, asset_id)
+    if asset.kind not in DERIVABLE_KINDS:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "wrong_kind", "message": "Cropping works on photos and artwork."},
+        )
+    if payload.x + payload.width > 1.0001 or payload.y + payload.height > 1.0001:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "bad_crop", "message": "The crop must stay inside the image."},
+        )
+    try:
+        data, meta = imaging.crop_artwork(
+            storage.path_for(asset.storage_key),
+            x=payload.x,
+            y=payload.y,
+            width=payload.width,
+            height=payload.height,
+        )
+    except imaging.ImagingError as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": "crop_failed", "message": exc.message}
+        ) from exc
+    return _store_derived(
+        db=db,
+        user=user,
+        request=request,
+        data=data,
+        filename=f"crop-{asset_id.hex[:8]}.png",
+        source=asset,
+        action="media.cropped",
+        meta=meta,
     )

@@ -155,3 +155,77 @@ def sanitize_filename(name: str) -> str:
     cleaned = Path(name or "upload").name
     safe = "".join(char for char in cleaned if char.isalnum() or char in "._- ")
     return (safe or "upload")[:255]
+
+
+def save_artwork(
+    *,
+    data: bytes,
+    original_filename: str,
+    kind: str,
+    make_thumbnail: bool = True,
+) -> StoredImage:
+    """Store artwork as PNG, keeping transparency intact.
+
+    Regular uploads are flattened onto a neutral background because they are
+    photos. Studio artwork (pattern tiles, cut-outs, exports) must keep its alpha
+    channel so layers can stack without a rectangle of background colour.
+    """
+
+    if not data:
+        raise UploadError("The uploaded file is empty.")
+    if len(data) > settings.max_upload_bytes:
+        raise UploadError(
+            f"File exceeds the {settings.max_upload_mb} MB limit.", code="file_too_large"
+        )
+
+    try:
+        with Image.open(io.BytesIO(data)) as probe:
+            probe_format = (probe.format or "").upper()
+            probe.verify()
+    except (UnidentifiedImageError, OSError) as exc:
+        raise UploadError("Unsupported or corrupted image file.", code="unsupported_media") from exc
+
+    if probe_format not in ALLOWED_FORMATS:
+        raise UploadError(
+            f"Unsupported image format. Allowed: {', '.join(sorted(ALLOWED_FORMATS))}.",
+            code="unsupported_media",
+        )
+
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            image = ImageOps.exif_transpose(image)
+            width, height = image.size
+            if width * height > settings.max_image_pixels:
+                raise UploadError("Image resolution is too large.", code="image_too_large")
+            artwork = image.convert("RGBA")
+            buffer = io.BytesIO()
+            artwork.save(buffer, format="PNG", optimize=True)
+            normalized = buffer.getvalue()
+    except UploadError:
+        raise
+    except (OSError, ValueError) as exc:
+        raise UploadError("The image could not be processed.", code="processing_failed") from exc
+
+    storage_key = f"{kind}/art/{uuid.uuid4().hex}.png"
+    target = path_for(storage_key)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(normalized)
+
+    thumbnail_key = None
+    if make_thumbnail:
+        thumb = Image.open(io.BytesIO(normalized)).convert("RGBA")
+        thumb.thumbnail((640, 640), Image.Resampling.LANCZOS)
+        thumb_key = f"{kind}/art/thumbs/{uuid.uuid4().hex}.webp"
+        thumb_target = path_for(thumb_key)
+        thumb_target.parent.mkdir(parents=True, exist_ok=True)
+        thumb.save(thumb_target, format="WEBP", quality=84, method=4)
+
+    return StoredImage(
+        storage_key=storage_key,
+        thumbnail_key=thumbnail_key,
+        mime_type="image/png",
+        byte_size=len(normalized),
+        width=width,
+        height=height,
+        checksum_sha256=hashlib.sha256(normalized).hexdigest(),
+    )

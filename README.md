@@ -4,7 +4,7 @@ A production-shaped web platform for AI-assisted fashion design: parametric avat
 component-level garment editor, a WebGL fitting room, print preparation, and a quoting
 marketplace between clients and workshops.
 
-**Status: Phases 1–3 complete and verified.** Backend (FastAPI + PostgreSQL/SQLite) and frontend
+**Status: Phases 1–4 complete and verified.** Backend (FastAPI + PostgreSQL/SQLite) and frontend
 (React + TypeScript + Vite + Tailwind + React Three Fiber) run together; every screen in the route
 table is implemented against a real API. AI features degrade explicitly when no provider key is
 configured — they never fabricate model output.
@@ -21,23 +21,23 @@ configured — they never fabricate model output.
 | D | Profile & measurements | Metric/imperial editing (stored metric), womenswear/menswear focus, age, height, weight, usual size, optional measurements, preferred fit, fashion styles, colour palette, profile photo, privacy toggles |
 | E | Avatar management | `/avatar`: five-avatar limit, four bundled GLB base models, 7-step creation wizard (details → photos + consent → base model → customisation → manual adjustment → save → edit/regenerate), primary selection, GLB download |
 | F | Catalogue | 125 original pieces: shalwar kameez, kurti, frock, maxi, lehenga, saree, gowns, tops, shirts, jeans, trousers, jackets, coats, sweaters, hoodies, sportswear, suits, blazers, waistcoats, sherwani, kurta pajama, eight footwear types and seven accessory types — each with palette, fabric, silhouette and component data |
-| G | Design editor | Per-component colour, fabric, pattern, embroidery, fit notes, print placement |
-| H | Component customisation | Components are independent; exclusivity rules (dress ↔ top/bottom) enforced in UI *and* API |
+| G | Design editor | `/editor/:designId`: layered studio with reference/artwork upload, non-destructive crop, resize, rotate, move, scale, layer stack, pattern placement, colour adjustment, background removal, undo/redo, save & reopen, duplicate, per-component reset and live preview |
+| H | Component customisation | Reusable garment-component templates: shalwar kameez exposes 8 independent pieces (kameez front, back, sleeves, neckline, collar, borders, shalwar, dupatta); menswear and western garments expose shirt/coat/trouser/waistcoat/kurta/jacket pieces etc. Components are independent; design layers are stored in the DB per component and never merged |
 | I | 3D fitting room | React Three Fiber scene, orbiting camera, contact shadows, wardrobe rail, saved-outfit loader |
 | J | 360° + walking | Drag-to-orbit, auto-rotate, deterministic walk cycle |
 | K | Shoes & accessories | `/studio/accessories`: sneakers, heels, sandals, boots, flats, formal, sports and traditional footwear; handbags, watches, belts, caps, scarves, jewellery and sunglasses. Slots stack; accessories can be hidden without deletion |
 | L | AI fashion assistant | Provider-backed chat when configured, deterministic rule-based stylist otherwise, with daily quota |
 | M | AI design analysis | Vision analysis of an uploaded design or photo; returns `mode: "unavailable"` when no key exists |
-| N | Image processing | Pillow/OpenCV uploads: EXIF normalisation, resize, thumbnails, palette extraction, framing checks |
+| N | Image processing | Pillow/OpenCV uploads: EXIF normalisation, resize, thumbnails, palette extraction, framing checks, GrabCut background removal and baked crops as transparent PNGs |
 | O | Virtual try-on | Try-on endpoint renders the design onto the current avatar parameters (procedural, not photoreal) |
 | P | Outfit saving & comparison | Save/lookup outfits, favourite, compare 2–3 outfits slot-by-slot with price totals |
-| Q | Print preparation | Print sheet generation with bleed/DPI metadata, PNG download |
+| Q | Print preparation | Print sheet generation with bleed/DPI metadata, PNG download; designs flatten only when a proof is exported |
 | R | Print marketplace | Studio directory, quote requests, quote accept/decline, per-request threads |
 | S | Orders & quotations | Outgoing/incoming request lists, status timeline, technical-pack export |
 | T | Admin dashboard | Stats, user/role management, studio verification, request oversight |
 | — | User dashboard | `/dashboard`: readiness checklist, recent designs, saved looks, open requests, storage and notice feed |
 | — | Fashion studio hub | `/studio`: six entries (women, men, accessories, design library, fitting room, stylist) plus catalogue selection |
-| — | Design library | `/designs`: filter by status, search, edit with `?design=` deep link, duplicate, archive, delete, try on |
+| — | Design library | `/designs`: filter by status, search, open the layered studio, quick edit with `?design=` deep link, duplicate, archive, delete, try on |
 | — | Settings | `/settings`: account name/opt-in, unit and motion preferences, JSON data export, sign-out-everywhere |
 | U | AI provider management | Enable/disable providers, model overrides, reset to env defaults, seven-day usage breakdown |
 | V | Notifications | In-app inbox with read state and deep links |
@@ -58,6 +58,13 @@ configured — they never fabricate model output.
 - **AI without keys is honest.** With no `GEMINI_API_KEY`/`GROQ_API_KEY`, assistant replies come from
   the offline rule engine and are labelled "Rule-based"; vision analysis returns an explicit
   unavailable response.
+- **Designs stay layered.** Component colours, patterns and artwork layers are saved as JSON in the
+  database. A flat PNG is produced only when the customer exports a proof, and it is stored beside
+  the design as a separate export asset. Background removal is local OpenCV GrabCut — useful for
+  clean studio photos, not a replacement for a professional cut-out on busy backgrounds.
+- **Patterns are drawn, not photographed.** Every fabric pattern (plain, printed, embroidered,
+  floral, geometric, traditional, stripes, checks and more) is generated as an original canvas tile,
+  so the studio ships without licensed textile imagery.
 - **OpenAI is disabled by default** (`OPENAI_ENABLED=false`) and requires both a key and an explicit
   admin switch. The platform never purchases capacity, GPUs or paid tiers.
 - **Playwright specs are written but browsers are not bundled.** `npm run e2e:install` downloads
@@ -225,10 +232,10 @@ make check        # ruff + ESLint + tsc + Pytest + Vitest + production build
 Individually:
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest          # 130 tests
+cd backend && ../.venv/bin/python -m pytest          # 142 tests
 cd backend && ../.venv/bin/python -m ruff check app tests
 cd frontend && npm run typecheck && npm run lint
-cd frontend && npx vitest run                        # 83 tests
+cd frontend && npx vitest run                        # 103 tests
 cd frontend && npm run build
 cd frontend && npm run e2e                           # needs `npm run e2e:install` once
 ```
@@ -236,9 +243,31 @@ cd frontend && npm run e2e                           # needs `npm run e2e:instal
 Backend tests run against SQLite with `DATABASE_URL=sqlite://` and cover auth (including
 sign-out-everywhere), profiles, measurement validation, account data export, catalogue, designs,
 outfits, media, avatars (consent gate, ownership, limits, editing, regeneration), AI fallbacks,
-catalogue discovery/favourites/management and admin rules. Frontend unit tests cover formatters,
-fitting-room slot exclusivity, persisted display preferences, catalogue filter URLs and labels, the
-avatar adjustment/GLB scaling helpers, and every seeded garment silhouette (rendered to static SVG).
+catalogue discovery/favourites/management, layered design documents, cut-outs/crops, proof exports
+and admin rules. Frontend unit tests cover formatters, fitting-room slot exclusivity, persisted
+display preferences, catalogue filter URLs and labels, the avatar adjustment/GLB scaling helpers,
+design-document helpers and undo/redo, the SVG studio stage and the editor page (open, edit, save,
+preview), and every seeded garment silhouette (rendered to static SVG).
+
+### Phase 4 verification (layered design studio)
+
+Verified against a live API and the Vite app on 2026-10-30:
+
+- Women's shalwar kameez exposes exactly eight independent components — `kameez_front`,
+  `kameez_back`, `sleeves`, `neckline`, `collar`, `borders`, `shalwar`, `dupatta` — each with its own
+  pattern-piece kind; menswear shirts, kurtas, waistcoats, sherwanis, suits, trousers and western
+  garments expose garment-specific pieces.
+- A design round-trips with two artwork layers (position, size, rotation, opacity, flip, crop
+  rectangle, blend mode and colour adjustments intact) and can be reopened, duplicated, reset
+  component-by-component, and saved again with optimistic `revision` checks (stale save → `409`).
+- Uploaded artwork keeps its alpha channel; `remove-background` produces a transparent PNG cut-out
+  and `crop` bakes a normalised crop; both are new assets, never mutations of the original.
+- A flattened PNG proof can be exported, stored as an export asset and downloaded (attachment);
+  the underlying design still reports its separate layers afterwards.
+- Artwork referenced by a saved design cannot be deleted (`409 asset_in_use`); deleting a design
+  removes its proof.
+- `make check` passes: **142 backend tests**, **103 frontend tests**, ruff, ESLint `--max-warnings 0`,
+  TypeScript and the production Vite build.
 
 ### Phase 3 verification (catalogue)
 

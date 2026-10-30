@@ -9,11 +9,27 @@ def _garment(client: TestClient, slug: str) -> dict:
     return client.get(f"/api/v1/catalog/garments/{slug}").json()
 
 
+def _first_component(garment: dict) -> dict:
+    return garment["components"][0]
+
+
 def test_design_can_be_created_with_component_overrides(client: TestClient, auth: dict[str, str]) -> None:
     garment = _garment(client, "poplin-shirt")
+    first = _first_component(garment)
+    collar = next(item for item in garment["components"] if item["id"] == "collar")
     components = {
-        "body": {"color": "#223344", "fabric": "linen", "pattern": "stripes", "embroidery": "none"},
-        "collar": {"color": "#ffffff", "fabric": "cotton", "pattern": "solid", "embroidery": "thread"},
+        first["id"]: {
+            "color": "#223344",
+            "fabric": first["fabrics"][0],
+            "pattern": "stripes",
+            "embroidery": "none",
+        },
+        "collar": {
+            "color": "#ffffff",
+            "fabric": collar["fabrics"][0],
+            "pattern": "solid",
+            "embroidery": "thread",
+        },
     }
     response = client.post(
         "/api/v1/designs",
@@ -22,7 +38,7 @@ def test_design_can_be_created_with_component_overrides(client: TestClient, auth
     )
     assert response.status_code == 201, response.text
     body = response.json()
-    assert body["components"]["body"]["color"] == "#223344"
+    assert body["components"][first["id"]]["color"] == "#223344"
     assert body["components"]["collar"]["pattern"] == "solid"
     assert body["status"] == "saved"
 
@@ -35,7 +51,9 @@ def test_design_rejects_unknown_component(client: TestClient, auth: dict[str, st
         json={
             "garment_id": garment["id"],
             "name": "Bad component",
-            "components": {"wing": {"color": "#000000", "fabric": "cotton", "pattern": "solid"}},
+            "components": {
+                "wing": {"color": "#000000", "fabric": "cotton", "pattern": "solid"}
+            },
         },
     )
     assert response.status_code == 422
@@ -50,7 +68,9 @@ def test_design_rejects_fabric_not_offered_for_component(client: TestClient, aut
         json={
             "garment_id": garment["id"],
             "name": "Denim collar",
-            "components": {"collar": {"color": "#000000", "fabric": "denim", "pattern": "solid"}},
+            "components": {
+                "collar": {"color": "#000000", "fabric": "denim", "pattern": "solid"}
+            },
         },
     )
     assert response.status_code == 422
@@ -65,7 +85,13 @@ def test_custom_print_requires_uploaded_artwork(client: TestClient, auth: dict[s
         json={
             "garment_id": garment["id"],
             "name": "Print without art",
-            "components": {"body": {"color": "#000000", "fabric": "cotton", "pattern": "custom_print"}},
+            "components": {
+                _first_component(garment)["id"]: {
+                    "color": "#000000",
+                    "fabric": _first_component(garment)["fabrics"][0],
+                    "pattern": "custom_print",
+                }
+            },
         },
     )
     assert response.status_code == 422
@@ -92,9 +118,9 @@ def test_custom_print_with_owned_asset(client: TestClient, auth: dict[str, str])
             "garment_id": garment["id"],
             "name": "Custom print shirt",
             "components": {
-                "body": {
+                _first_component(garment)["id"]: {
                     "color": "#000000",
-                    "fabric": "cotton",
+                    "fabric": _first_component(garment)["fabrics"][0],
                     "pattern": "custom_print",
                     "print_asset_id": asset_id,
                 }
@@ -102,7 +128,8 @@ def test_custom_print_with_owned_asset(client: TestClient, auth: dict[str, str])
         },
     )
     assert response.status_code == 201, response.text
-    assert response.json()["components"]["body"]["print_asset_id"] == asset_id
+    first_id = _first_component(garment)["id"]
+    assert response.json()["components"][first_id]["print_asset_id"] == asset_id
 
 
 def test_design_update_duplicate_and_delete(client: TestClient, auth: dict[str, str]) -> None:

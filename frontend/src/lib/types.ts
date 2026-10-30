@@ -166,6 +166,8 @@ export interface GarmentComponent {
   description?: string | null
   fabrics: string[]
   allows_print: boolean
+  /** Pattern-piece shape the design studio draws for this component. */
+  kind?: string
 }
 
 export interface Garment {
@@ -261,6 +263,46 @@ export interface Look {
   garments: Garment[]
 }
 
+export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'soft-light'
+
+export interface LayerTransform {
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation: number
+  opacity: number
+  flip_x: boolean
+}
+
+export interface LayerCrop {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface LayerAdjustments {
+  brightness: number
+  contrast: number
+  saturation: number
+  hue: number
+}
+
+/** One piece of artwork inside a component. Never merged with the design. */
+export interface DesignLayer {
+  id: string
+  name: string
+  asset_id: string
+  transform: LayerTransform
+  crop: LayerCrop
+  adjustments: LayerAdjustments
+  blend_mode: BlendMode
+  visible: boolean
+  locked: boolean
+  z_index: number
+}
+
 export interface ComponentCustomisation {
   color: string
   fabric: string
@@ -268,6 +310,10 @@ export interface ComponentCustomisation {
   embroidery: string
   print_asset_id?: string | null
   notes?: string | null
+  layers?: DesignLayer[]
+  pattern_scale?: number
+  pattern_rotation?: number
+  texture_tint?: string | null
 }
 
 export interface Design {
@@ -278,9 +324,38 @@ export interface Design {
   components: Record<string, ComponentCustomisation>
   fit: Record<string, unknown>
   notes: string | null
+  revision: number
+  source_design_id?: string | null
+  proof_asset_id?: string | null
   created_at: string
   updated_at: string
   garment?: Garment | null
+}
+
+export interface PatternOption {
+  id: string
+  family: string
+  label: string
+  description: string
+}
+
+export interface DesignLibrary {
+  patterns: PatternOption[]
+  families: string[]
+  fabrics: string[]
+  embroideries: string[]
+  blend_modes: BlendMode[]
+  component_kinds: string[]
+  limits: {
+    layers_per_component: number
+    layers_per_design: number
+    components_per_design: number
+  }
+}
+
+export interface DerivedAsset {
+  asset: MediaAsset
+  meta: Record<string, unknown>
 }
 
 export interface OutfitItem {

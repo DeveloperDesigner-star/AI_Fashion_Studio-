@@ -42,6 +42,13 @@ The browser therefore always talks to one origin and no secret ever reaches clie
 - **Visuals** — no stock photography. `GarmentArt` draws each garment from its silhouette, palette
   and component customisations as SVG; `Figure`/`AvatarScene` build a parametric mannequin in
   Three.js from `AvatarParameters`. If WebGL is unavailable the scene falls back to the 2D art.
+- **Design studio** — `DesignStage` renders a 240×320 technical flat from the reusable component
+  kinds in `lib/designLayout.ts`. Each piece is filled with its own colour, a procedural pattern
+  (`lib/fabricTexture.ts`, shared with the 3D studio) and its artwork layers, clipped to the piece.
+  Layers are positioned in stage coordinates, transformed in the SVG and never flattened in state.
+  `useDesignHistory` keeps a 50-step undo/redo stack around the component map; a drag records one
+  step while the pointer is down. Export clones the SVG, inlines private images as data URLs and
+  rasterises to PNG (`lib/stageExport.ts`) before uploading it as the design proof.
 - **Design system** — Tailwind 4 `@theme` tokens (ink, paper, bone, sand, line, clay, olive, gold,
   oxblood) plus composition utilities (`shell`, `eyebrow`, `display-*`, `label-xs`). Primitives in
   `components/ui` keep spacing, focus states and typography consistent.
@@ -107,13 +114,46 @@ Key invariants enforced server-side:
   owned by the same user. Photo references require a recorded consent timestamp.
 - An outfit holds at most one garment per exclusive slot; `dress` cannot coexist with `top`/`bottom`.
   Accessories (`bag`, `watch`, `accessory`, `headwear`) may stack.
-- Designs respect per-user caps and ownership; print components must reference an owned print asset.
+- Designs respect per-user caps and ownership; print components and artwork layers must reference
+  media owned by the same user. A design stores `revision` for optimistic concurrency (a stale
+  `PATCH` returns 409) and keeps `source_design_id` on copies.
+- Component ids must exist on the garment, fabric and pattern vocabulary are validated server-side,
+  and each component may hold at most 8 layers (40 per design). Layer crops are validated to stay
+  inside the source image.
 - Quote state transitions are validated (only an offered quote can be accepted/declined).
 - Account deletion is a soft delete that revokes sessions and hides studio data.
 
 PostgreSQL is the production target; SQLite is supported for tests and quick starts. JSON columns
 hold component customisations, palettes and outfit covers, keeping the schema stable while the
 editor evolves.
+
+### Design studio document (Phase 4)
+
+```
+designs
+  ├── garment_id ──▶ garments.components[]  (reusable piece templates + `kind`)
+  ├── revision                              optimistic save token
+  ├── source_design_id                      set on duplicates
+  ├── proof_asset_id ──▶ media_assets       flattened PNG, written only on export
+  └── components: {                          JSON, one entry per customised piece
+        "<component_id>": {
+          color, fabric, pattern, embroidery, pattern_scale, pattern_rotation,
+          print_asset_id,
+          layers: [{ id, name, asset_id, transform{x,y,width,height,rotation,opacity,flip_x},
+                     crop{x,y,width,height}, adjustments{brightness,contrast,saturation,hue},
+                     blend_mode, visible, locked, z_index }]
+        }
+      }
+```
+
+`app/db/component_templates.py` derives the component list from a garment's silhouette/category, so
+every catalogue row — including the eight-piece women's shalwar kameez, menswear shirts, kurtas,
+waistcoats, sherwanis, suits, trousers, knitwear, footwear and accessories — has a garment-specific
+vocabulary. Serving data comes from `GET /api/v1/designs/library`.
+
+Media derived from a design layer (`POST /media/{id}/remove-background`, `POST /media/{id}/crop`) is
+written as a new PNG asset with its alpha channel intact; the source asset is never mutated. The
+proof endpoint (`POST /designs/{id}/proof`) is the only place a design is flattened.
 
 ### Avatar pipeline
 
@@ -229,6 +269,9 @@ Derived data:
 - **Framing metrics** — resolution, orientation, sharpness estimate, subject-margin checks, plus a
   score and plain-language advice. Explicitly labelled as pixel metrics, not body measurements.
 - **Print sheet** — placement-aware composite with bleed and DPI metadata for atelier handoff.
+- **Cut-out** — OpenCV GrabCut with a corner-colour fallback, feathered alpha, stored as PNG. Used by
+  the design studio's background-removal action; the original upload stays untouched.
+- **Crop** — normalised crop baked into a new PNG (non-destructive crops also live in design layers).
 
 Uploads are private: content is streamed only to the owner (or an admin) through an authenticated
 route, and the client converts it to a blob URL via `useMediaUrl` (cached, revoked on unmount).

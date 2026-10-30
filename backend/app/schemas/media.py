@@ -55,3 +55,17 @@ class PrintSheetResponse(BaseModel):
     content_type: str
     meta: dict[str, Any]
     download_url: str
+
+
+class CropRequest(BaseModel):
+    """Normalised crop rectangle (fractions of the source image)."""
+
+    x: float = Field(default=0, ge=0, le=0.99)
+    y: float = Field(default=0, ge=0, le=0.99)
+    width: float = Field(default=1, gt=0.01, le=1)
+    height: float = Field(default=1, gt=0.01, le=1)
+
+
+class DerivedAssetResponse(BaseModel):
+    asset: MediaRead
+    meta: dict[str, Any]

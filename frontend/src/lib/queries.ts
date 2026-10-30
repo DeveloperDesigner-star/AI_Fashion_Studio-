@@ -9,6 +9,7 @@ import type {
   Avatar,
   CatalogTaxonomy,
   Design,
+  DesignLibrary,
   Garment,
   GarmentList,
   Look,
@@ -37,6 +38,7 @@ export const qk = {
   looks: (gender?: string) => ['looks', gender ?? 'all'] as const,
   designs: (params: { status?: string; limit?: number } = {}) => ['designs', params] as const,
   design: (id: string) => ['design', id] as const,
+  designLibrary: ['designs', 'library'] as const,
   outfits: ['outfits'] as const,
   outfit: (id: string) => ['outfit', id] as const,
   media: ['media'] as const,
@@ -83,6 +85,8 @@ export const fetchers = {
     if (params.limit) search.set('limit', String(params.limit))
     return api.get<{ items: Design[]; total: number }>(`/designs?${search.toString()}`)
   },
+  design: (id: string) => api.get<Design>(`/designs/${id}`),
+  designLibrary: () => api.get<DesignLibrary>('/designs/library'),
   outfits: () => api.get<{ items: Outfit[]; total: number }>('/outfits'),
   outfit: (id: string) => api.get<Outfit>(`/outfits/${id}`),
   compare: (ids: string[]) => api.get<OutfitComparison>(`/outfits/compare?ids=${ids.join(',')}`),

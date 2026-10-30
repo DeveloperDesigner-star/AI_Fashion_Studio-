@@ -14,6 +14,7 @@ import { AccessoriesPage } from '@/pages/AccessoriesPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { StudioPage } from '@/pages/StudioPage'
 import { GarmentPage } from '@/pages/GarmentPage'
+import { DesignEditorPage } from '@/pages/DesignEditorPage'
 import { FittingRoomPage } from '@/pages/FittingRoomPage'
 import { OutfitsPage } from '@/pages/OutfitsPage'
 import { ProfilePage } from '@/pages/ProfilePage'
@@ -44,6 +45,7 @@ export default function App() {
 
         <Route path="dashboard" element={protectedPage(<DashboardPage />)} />
         <Route path="designs" element={protectedPage(<DesignsPage />)} />
+        <Route path="editor/:designId" element={protectedPage(<DesignEditorPage />)} />
         <Route path="avatar" element={protectedPage(<AvatarPage />)} />
         <Route path="favorites" element={protectedPage(<FavoritesPage />)} />
         <Route path="settings" element={protectedPage(<SettingsPage />)} />
