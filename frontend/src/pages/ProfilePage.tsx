@@ -429,6 +429,7 @@ export function ProfilePage() {
             value={mediaQuery.data?.storage_used_bytes ?? 0}
             max={mediaQuery.data?.storage_limit_bytes ?? 1}
             label="Upload quota"
+            format={formatBytes}
           />
         </div>
 

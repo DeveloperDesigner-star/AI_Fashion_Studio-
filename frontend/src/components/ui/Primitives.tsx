@@ -154,7 +154,18 @@ export function StatTile({ label, value, hint }: { label: string; value: ReactNo
   )
 }
 
-export function Progress({ value, max = 100, label }: { value: number; max?: number; label?: string }) {
+export function Progress({
+  value,
+  max = 100,
+  label,
+  format,
+}: {
+  value: number
+  max?: number
+  label?: string
+  format?: (value: number) => string
+}) {
+  const render = format ?? ((input: number) => String(input))
   const percent = Math.max(0, Math.min(100, (value / Math.max(max, 1)) * 100))
   return (
     <div className="space-y-1.5">
@@ -162,7 +173,7 @@ export function Progress({ value, max = 100, label }: { value: number; max?: num
         <div className="flex justify-between text-xs text-ink-muted">
           <span>{label}</span>
           <span>
-            {value} / {max}
+            {render(value)} / {render(max)}
           </span>
         </div>
       )}

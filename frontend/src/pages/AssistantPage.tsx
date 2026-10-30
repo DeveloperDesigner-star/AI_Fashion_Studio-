@@ -292,7 +292,12 @@ export function AssistantPage() {
                   max={quota.requests_limit}
                   label="Requests"
                 />
-                <Progress value={quota.tokens_used} max={quota.tokens_limit} label="Tokens" />
+                <Progress
+                  value={quota.tokens_used}
+                  max={quota.tokens_limit}
+                  label="Tokens"
+                  format={(input) => input.toLocaleString('en-US')}
+                />
               </div>
               <p className="mt-3 text-[0.625rem] leading-relaxed text-ink-muted">
                 Limits protect the free infrastructure. Rule-based replies also count toward the

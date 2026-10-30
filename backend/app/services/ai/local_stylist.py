@@ -102,8 +102,9 @@ def build_reply(
 
     lines: list[str] = []
     greeting = f"{display_name.split(' ')[0]}, " if display_name else ""
+    article = "an" if occasion[:1].lower() in "aeiou" else "a"
     lines.append(
-        f"{greeting}here is a {occasion} edit built from the studio catalogue. "
+        f"{greeting}here is {article} {occasion} edit built from the studio catalogue. "
         "This response comes from the offline styling rules because no AI provider key is configured."
     )
     if size_label:

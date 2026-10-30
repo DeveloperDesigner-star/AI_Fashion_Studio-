@@ -337,7 +337,7 @@ function ComparisonTable({ data }: { data: OutfitComparison }) {
       </table>
       {data.shared_garments.length > 0 && (
         <p className="border-t border-line px-4 py-3 text-xs text-ink-muted">
-          Shared pieces: {data.shared_garments.map(titleCase).join(', ')}
+          Shared pieces: {data.shared_garments.map((slug) => titleCase(slug.replace(/-/g, ' '))).join(', ')}
         </p>
       )}
     </div>
