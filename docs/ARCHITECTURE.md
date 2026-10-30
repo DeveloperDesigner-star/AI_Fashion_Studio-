@@ -80,6 +80,10 @@ The browser therefore always talks to one origin and no secret ever reaches clie
 | `services/ai/registry.py` | Provider selection (Gemini → Groq → OpenAI-off → local), toggles, timeouts, quotas |
 | `services/ai/local_stylist.py` | Deterministic catalogue styling used when no provider is usable |
 | `services/audit.py` | Append-only audit entries for security-sensitive actions |
+| `services/access.py` | Suspension lifecycle, including automatic lifting at expiry |
+| `services/privacy.py` | Account erasure shared by user and administrator flows; media file deletion and consent records |
+| `services/taxonomy.py` | Database-backed categories, catalogue styles and profile styles with usage counts and public payload assembly |
+| `services/ai/spending.py` | Persisted AI daily/monthly spending controls and the global pause switch |
 | `services/export.py` | Technical-pack and account data export |
 
 ---
@@ -103,6 +107,14 @@ users ──1:1── profiles ──1:1── measurements
 
 garments ──1:N── designs                ai_requests · provider_settings
 looks ──many:many (by slug)── garments  audit_logs
+                                       ai_spending_policies
+
+users ──1:N── user_reports              order_disputes ──N:1── quote_requests
+  │      ──1:N── account_suspensions     ├──N:1── users (opener)
+  │      ──1:N── consent_records         └──N:1── users (resolver)
+  └──1:N── account_deletion_requests
+
+catalog_terms (kind: category | style | profile_style)
 ```
 
 Key invariants enforced server-side:

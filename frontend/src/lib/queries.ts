@@ -5,8 +5,22 @@ import type {
   AIFallbackEntry,
   AITaskResult,
   AIUsage,
+  AdminAssetList,
+  AdminConsentRecord,
+  AdminConsentSummary,
+  AdminDeletionRequest,
+  AdminDispute,
   AdminList,
+  AdminOffering,
+  AdminProduction,
+  AdminQuotaEvent,
+  AdminReport,
+  AdminSecurityOverview,
+  AdminSpendingPolicy,
   AdminStats,
+  AdminTaxonomy,
+  AdminTemplate,
+  AdminUserAccess,
   AdminUser,
   AuditLogEntry,
   AssistantResponse,
@@ -76,6 +90,20 @@ export const qk = {
   adminCatalog: (params: { q?: string; status?: string; page?: number } = {}) =>
     ['admin', 'catalog', params] as const,
   adminBusinesses: ['admin', 'businesses'] as const,
+  adminReports: (status?: string) => ['admin', 'reports', status ?? 'all'] as const,
+  adminDisputes: (status?: string) => ['admin', 'disputes', status ?? 'all'] as const,
+  adminTaxonomy: ['admin', 'taxonomy'] as const,
+  adminTemplates: ['admin', 'templates'] as const,
+  adminAssets: (params: { q?: string; kind?: string } = {}) => ['admin', 'assets', params] as const,
+  adminOffers: ['admin', 'offerings'] as const,
+  adminProduction: ['admin', 'production'] as const,
+  adminDeletionRequests: (status?: string) => ['admin', 'deletions', status ?? 'all'] as const,
+  adminConsent: ['admin', 'consent'] as const,
+  adminSecurity: ['admin', 'security'] as const,
+  adminSpending: ['admin', 'spending'] as const,
+  adminQuotaEvents: ['admin', 'quota-events'] as const,
+  adminUserAccess: (id: string) => ['admin', 'user-access', id] as const,
+  adminUserConsent: (id: string) => ['admin', 'user-consent', id] as const,
   aiUsage: ['admin', 'ai-usage'] as const,
   aiErrors: ['admin', 'ai-errors'] as const,
   aiFallbacks: ['admin', 'ai-fallbacks'] as const,
@@ -194,6 +222,36 @@ export const fetchers = {
     api.get<{ items: QuoteRequest[]; total: number }>('/admin/requests'),
   adminBusinesses: () =>
     api.get<{ items: Business[]; total: number }>('/admin/businesses'),
+  adminReports: (status?: string) =>
+    api.get<{ items: AdminReport[]; total: number }>(
+      `/admin/reports${status ? `?status=${status}` : ''}`,
+    ),
+  adminDisputes: (status?: string) =>
+    api.get<{ items: AdminDispute[]; total: number }>(
+      `/admin/disputes${status ? `?status=${status}` : ''}`,
+    ),
+  adminTaxonomy: () => api.get<AdminTaxonomy>('/admin/taxonomy'),
+  adminTemplates: () =>
+    api.get<{ items: AdminTemplate[]; total: number }>('/admin/templates'),
+  adminAssets: (params: { q?: string; kind?: string } = {}) => {
+    const search = new URLSearchParams()
+    if (params.q) search.set('q', params.q)
+    if (params.kind) search.set('kind', params.kind)
+    return api.get<AdminAssetList>(`/admin/assets?${search.toString()}`)
+  },
+  adminOffers: () =>
+    api.get<{ items: AdminOffering[]; total: number }>('/admin/offerings'),
+  adminProduction: () => api.get<AdminProduction>('/admin/production'),
+  adminDeletionRequests: (status = 'pending') =>
+    api.get<AdminDeletionRequest[]>(`/admin/deletion-requests?status=${status}`),
+  adminConsent: () => api.get<AdminConsentSummary>('/admin/consent'),
+  adminSecurity: () => api.get<AdminSecurityOverview>('/admin/security'),
+  adminSpending: () => api.get<AdminSpendingPolicy>('/admin/ai-spending'),
+  adminQuotaEvents: () =>
+    api.get<{ items: AdminQuotaEvent[]; total: number }>('/admin/ai-quota-events'),
+  adminUserAccess: (id: string) => api.get<AdminUserAccess>(`/admin/users/${id}/access`),
+  adminUserConsent: (id: string) =>
+    api.get<AdminConsentRecord[]>(`/admin/users/${id}/consent`),
   aiUsage: () => api.get<AIUsage>('/admin/ai-usage'),
   aiErrors: () => api.get<{ items: AIErrorEntry[]; total: number }>('/admin/ai-errors'),
   aiFallbacks: () => api.get<{ items: AIFallbackEntry[]; total: number }>('/admin/ai-fallbacks'),

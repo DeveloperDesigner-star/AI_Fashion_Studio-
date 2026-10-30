@@ -1029,3 +1029,252 @@ export interface TryOnSessionCreate {
   photo_processing_consent?: boolean
   training_opt_in?: boolean
 }
+
+// --------------------------------------------------------------------------- //
+// Phase 9 — administration, moderation and privacy
+// --------------------------------------------------------------------------- //
+export interface AdminReport {
+  id: string
+  reporter_id: string | null
+  target_type: 'user' | 'business' | 'order' | 'asset' | string
+  target_id: string
+  target_label?: string | null
+  category: string
+  description: string
+  status: string
+  priority: string
+  resolution: string | null
+  reviewed_by_id: string | null
+  reviewed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminDispute {
+  id: string
+  order_id: string
+  opened_by_id: string | null
+  reason: string
+  description: string
+  desired_outcome: string | null
+  status: string
+  resolution: string | null
+  resolved_by_id: string | null
+  resolved_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminSuspension {
+  id: string
+  user_id: string
+  reason: string
+  note: string
+  created_by_id: string | null
+  expires_at: string | null
+  lifted_at: string | null
+  lifted_by_id: string | null
+  lifted_note: string | null
+  created_at: string
+  active: boolean
+}
+
+export interface AdminSession {
+  id: string
+  created_at: string
+  expires_at: string
+  revoked_at: string | null
+  user_agent: string | null
+  ip_address: string | null
+}
+
+export interface AdminUserAccess {
+  user_id: string
+  role: UserRole
+  is_active: boolean
+  is_verified: boolean
+  suspension: AdminSuspension | null
+  active_sessions: number
+  sessions: AdminSession[]
+  consent: {
+    photo_consent_at: string | null
+    photo_consent_version: string | null
+    allow_photo_analysis: boolean
+    share_measurements: boolean
+  }
+}
+
+export interface AdminCatalogTerm {
+  id: string
+  kind: 'category' | 'style' | 'profile_style'
+  value: string
+  label: string
+  description: string
+  is_active: boolean
+  is_builtin: boolean
+  sort_order: number
+  usage_count: number
+  group: string | null
+}
+
+export interface AdminTaxonomy {
+  items: AdminCatalogTerm[]
+  total: number
+  categories: number
+  styles: number
+  profile_styles: number
+}
+
+export interface AdminTemplate {
+  key: string
+  source: 'silhouette' | 'category'
+  name: string
+  component_count: number
+  garments_using: number
+  components: { id: string; label: string; kind: string }[]
+}
+
+export interface AdminSpendingPolicy {
+  daily_request_limit: number
+  daily_token_limit: number
+  monthly_budget_usd: number | null
+  is_paused: boolean
+  notes: string | null
+  updated_by_id: string | null
+  updated_at: string
+  paid_usage_enabled: boolean
+  enforcement: string
+}
+
+export interface AdminQuotaEvent {
+  id: string
+  user_id: string | null
+  kind: string
+  provider: string
+  status: string
+  error: string | null
+  created_at: string | null
+}
+
+export interface AdminDeletionRequest {
+  id: string
+  user_id: string
+  reason: string
+  status: string
+  admin_note: string | null
+  decided_by_id: string | null
+  decided_at: string | null
+  created_at: string
+  user_email: string | null
+}
+
+export interface AdminConsentRecord {
+  id: string
+  user_id: string
+  kind: string
+  granted: boolean
+  version: string | null
+  actor_id: string | null
+  note: string | null
+  detail: Record<string, unknown>
+  created_at: string
+}
+
+export interface AdminConsentSummary {
+  users_total: number
+  photo_consent_given: number
+  photo_consent_missing: number
+  analysis_opt_in: number
+  measurement_sharing: number
+  current_version: string
+  versions: Record<string, number>
+  recent: AdminConsentRecord[]
+}
+
+export interface AdminAsset {
+  id: string
+  user_id: string
+  kind: string
+  photo_view: string | null
+  original_filename: string
+  mime_type: string
+  byte_size: number
+  width: number
+  height: number
+  is_private: boolean
+  created_at: string
+}
+
+export interface AdminAssetList {
+  items: AdminAsset[]
+  total: number
+  total_bytes: number
+}
+
+export interface AdminOffering {
+  id: string
+  business_id: string
+  business_name: string
+  kind: string
+  name: string
+  description: string
+  category: string
+  pricing_mode: string
+  price_cents: number | null
+  currency: string
+  unit: string
+  lead_time_days: number | null
+  is_active: boolean
+  created_at: string | null
+}
+
+export interface AdminProductionRow {
+  id: string
+  reference_code: string
+  title: string
+  status: string
+  production_status: string
+  business_id: string | null
+  business_name: string | null
+  customer_email: string | null
+  print_package_status: string | null
+  days_in_status: number
+  stalled: boolean
+  updated_at: string
+}
+
+export interface AdminProduction {
+  counts: Record<string, number>
+  stalled: number
+  total: number
+  items: AdminProductionRow[]
+}
+
+export interface AdminSecurityOverview {
+  accounts: { total: number; admins: number; suspended: number; active_sessions: number }
+  media: { private_assets: number; non_private_assets: number; total_bytes: number }
+  queue: {
+    open_reports: number
+    open_disputes: number
+    pending_deletions: number
+    audit_events_24h: number
+  }
+  policy: {
+    password_min_length: number
+    access_token_expire_minutes: number
+    refresh_token_expire_days: number
+    refresh_tokens: string
+    rate_limit_requests_per_minute: number
+    auth_rate_limit_per_minute: number
+    upload_rate_limit_per_minute: number
+    max_upload_mb: number
+    max_image_pixels: number
+    cookie_secure: boolean
+    cookie_samesite: string
+    jwt_algorithm: string
+    uploads_private_by_default: boolean
+    media_retention_days: number
+    paid_ai_enabled: boolean
+  }
+  note: string
+}

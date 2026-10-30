@@ -34,7 +34,7 @@ from app.schemas.auth import (
     UserRead,
     UserUpdateRequest,
 )
-from app.services import audit, storage
+from app.services import access, audit, privacy
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -153,7 +153,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DbSes
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "invalid_credentials", "message": "Incorrect email or password."},
         )
-    if not user.is_active:
+    if not user.is_active and not access.lift_expired_suspension(db, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "account_disabled", "message": "This account has been disabled."},
@@ -309,10 +309,6 @@ def delete_account(
         resource_id=user.id,
         detail={"email": user.email},
     )
-    for asset in list(user.media):
-        storage.delete_file(asset.storage_key)
-        storage.delete_file(asset.thumbnail_key)
-    db.delete(user)
-    db.flush()
+    privacy.purge_user(db, user)
     _clear_refresh_cookie(response)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

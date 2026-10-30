@@ -11,7 +11,6 @@ from app.api.v1.deps import CurrentUser, DbSession, OptionalUser
 from app.models.catalog import Favorite, Garment, Look
 from app.models.enums import (
     FABRICS,
-    FASHION_STYLES,
     GARMENT_FITS,
     OCCASIONS,
     SEASONS,
@@ -27,6 +26,7 @@ from app.schemas.catalog import (
     LookRead,
 )
 from app.services import catalog as catalog_service
+from app.services import taxonomy as taxonomy_service
 from app.services.catalog import split_csv
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
@@ -126,9 +126,10 @@ def list_garments(
     page: int = Query(default=1, ge=1, le=100),
     page_size: int = Query(default=24, ge=1, le=60),
 ) -> GarmentListResponse:
-    categories = _validate(split_csv(category), catalog_service.known_categories(), "category")
+    taxonomy_service.ensure_terms(db)
+    categories = _validate(split_csv(category), taxonomy_service.allowed_values(db, "category"), "category")
     slots = _validate(split_csv(slot), catalog_service.known_slots(), "slot")
-    styles = _validate(split_csv(style), set(FASHION_STYLES), "style")
+    styles = _validate(split_csv(style), taxonomy_service.allowed_values(db, "style"), "style")
     occasions = _validate(split_csv(occasion), set(OCCASIONS), "occasion")
     seasons = _validate(split_csv(season), set(SEASONS), "season")
     fits = _validate(split_csv(fit), set(GARMENT_FITS), "fit")
@@ -261,7 +262,7 @@ def taxonomy(db: DbSession) -> dict[str, Any]:
         .where(Garment.is_active.is_(True))
         .group_by(Garment.category)
     ).all()
-    return catalog_service.taxonomy_payload({row[0]: row[1] for row in rows})
+    return taxonomy_service.payload(db, {row[0]: row[1] for row in rows})
 
 
 @router.get("/favorites", response_model=FavoriteListResponse)

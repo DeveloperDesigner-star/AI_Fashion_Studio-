@@ -285,6 +285,22 @@ FABRICS: tuple[str, ...] = (
 
 FASHION_STYLES: tuple[str, ...] = tuple(member.value for member in FashionStyle)
 
+# Personal style preferences shown in the profile editor. Deliberately separate
+# from catalogue editorial styles: a member can prefer "tailored" without every
+# garment being tagged with that merchandising style.
+PROFILE_STYLES: tuple[str, ...] = (
+    "minimal",
+    "classic",
+    "tailored",
+    "streetwear",
+    "romantic",
+    "bohemian",
+    "sporty",
+    "avant_garde",
+    "vintage",
+    "resort",
+)
+
 SEASONS: tuple[str, ...] = (
     "all-season",
     "spring-summer",

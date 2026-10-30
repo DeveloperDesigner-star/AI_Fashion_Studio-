@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import (
+    PROFILE_STYLES,
     BodyShape,
     GenderStyle,
     MeasurementSource,
@@ -65,18 +66,7 @@ class MeasurementRead(ORMModel):
     updated_at: datetime
 
 
-FASHION_STYLES: tuple[str, ...] = (
-    "minimal",
-    "classic",
-    "tailored",
-    "streetwear",
-    "romantic",
-    "bohemian",
-    "sporty",
-    "avant_garde",
-    "vintage",
-    "resort",
-)
+FASHION_STYLES: tuple[str, ...] = PROFILE_STYLES
 
 
 class ProfileInput(BaseModel):
@@ -106,13 +96,11 @@ class ProfileInput(BaseModel):
 
     @field_validator("fashion_styles")
     @classmethod
-    def _known_styles(cls, value: list[str] | None) -> list[str] | None:
+    def _dedupe_styles(cls, value: list[str] | None) -> list[str] | None:
         if value is None:
             return None
-        cleaned = []
+        cleaned: list[str] = []
         for style in value:
-            if style not in FASHION_STYLES:
-                raise ValueError(f"Unknown style '{style}'.")
             if style not in cleaned:
                 cleaned.append(style)
         return cleaned

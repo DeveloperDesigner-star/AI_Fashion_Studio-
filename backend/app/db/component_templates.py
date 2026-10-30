@@ -462,3 +462,49 @@ def components_for(garment: dict[str, Any]) -> list[dict[str, Any]]:
         result.append(item)
     return result
 
+
+
+# --------------------------------------------------------------------------- #
+# Admin template browser
+# --------------------------------------------------------------------------- #
+def template_catalog() -> list[dict[str, Any]]:
+    """Every reusable template, keyed for the admin dashboard.
+
+    Silhouette templates win at render time, so a key is namespaced by its
+    source to keep the two vocabularies unambiguous.
+    """
+
+    entries: list[dict[str, Any]] = []
+    for key, components in sorted(BY_SILHOUETTE.items()):
+        entries.append(
+            {
+                "key": f"silhouette:{key}",
+                "source": "silhouette",
+                "name": key.replace("_", " ").title(),
+                "component_count": len(components),
+                "components": copy.deepcopy(components),
+            }
+        )
+    seen_categories: set[str] = set()
+    for key, components in sorted(BY_CATEGORY.items()):
+        fingerprint = f"{id(components)}:{len(components)}"
+        if fingerprint in seen_categories:
+            continue
+        seen_categories.add(fingerprint)
+        entries.append(
+            {
+                "key": f"category:{key}",
+                "source": "category",
+                "name": key.replace("_", " ").title(),
+                "component_count": len(components),
+                "components": copy.deepcopy(components),
+            }
+        )
+    return entries
+
+
+def components_for_template(key: str) -> list[dict[str, Any]] | None:
+    source, _, name = key.partition(":")
+    source_map = {"silhouette": BY_SILHOUETTE, "category": BY_CATEGORY}
+    components = source_map.get(source, {}).get(name)
+    return copy.deepcopy(components) if components is not None else None

@@ -155,8 +155,11 @@ user headers) and `admin` fixtures. Tests assert status codes and JSON contracts
 
 **Frontend** (`src/**/*.test.ts(x)`): Vitest with jsdom and Testing Library matchers. Coverage focuses
 on deterministic logic — formatters, fitting-room slot rules, display preferences, catalogue filter
-URLs/labels (`src/lib/catalog.test.ts`), avatar adjustment/GLB-scaling helpers, and static rendering of
-every seeded garment silhouette (`src/components/garment/GarmentArt.test.tsx`).
+URLs/labels (`src/lib/catalog.test.ts`), avatar adjustment/GLB-scaling helpers, static rendering of
+every seeded garment silhouette (`src/components/garment/GarmentArt.test.tsx`), and the admin
+dashboard's report review, access/suspension, erasure approval and taxonomy visibility flows
+(`src/pages/admin.test.tsx`). Backend suites `test_admin.py` and `test_admin_phase9.py` cover the
+authorisation matrix, suspensions, moderation, taxonomy, spending controls and privacy workflows.
 
 **E2E** (`frontend/e2e/`): Playwright smoke specs for the public shell and auth form validation. The
 browsers are not committed; `npm run e2e:install` downloads Chromium once.

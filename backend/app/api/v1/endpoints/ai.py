@@ -108,7 +108,7 @@ def capabilities(db: DbSession, user: CurrentUser) -> AICapabilitiesResponse:
     )
 
 
-def _guard_ai_request(payload_chars: int, user, db, request: Request) -> None:
+def _guard_ai_request(payload_chars: int, user, db, request: Request, *, kind: str = "unknown") -> None:
     enforce("ai", client_identity(request), settings.rate_limit_requests_per_minute)
     if payload_chars > settings.ai_max_prompt_chars:
         raise HTTPException(
@@ -120,6 +120,17 @@ def _guard_ai_request(payload_chars: int, user, db, request: Request) -> None:
         )
     exhausted, reason = quota.is_exhausted(db, user.id)
     if exhausted:
+        quota.log_request(
+            db,
+            user_id=user.id,
+            kind=kind,
+            provider="none",
+            model=None,
+            status=AIRequestStatus.QUOTA_EXCEEDED.value,
+            error=reason,
+        )
+        # Persist the denied event even though this request raises.
+        db.commit()
         raise HTTPException(status_code=429, detail={"code": "quota_exceeded", "message": reason})
 
 
@@ -163,7 +174,7 @@ async def _run_task(
     payload: AITaskRequest,
     request: Request,
 ) -> AITaskResponse:
-    _guard_ai_request(len(payload.prompt), user, db, request)
+    _guard_ai_request(len(payload.prompt), user, db, request, kind=task_key)
     try:
         task = task_definition(task_key)
         user_prompt = build_user_prompt(prompt=payload.prompt, context=payload.context)
@@ -393,7 +404,7 @@ async def pattern_identification(
 async def assistant(
     payload: AssistantRequest, user: CurrentUser, db: DbSession, request: Request
 ) -> AssistantResponse:
-    _guard_ai_request(len(payload.message), user, db, request)
+    _guard_ai_request(len(payload.message), user, db, request, kind="assistant")
 
     profile, measurements, recommendation, gender_style = _profile_context(db, user)
     catalog = _catalog_context(db, payload.gender_style or gender_style)
@@ -503,7 +514,7 @@ async def analyze_design(
     request: Request,
     task_key: str = Query(default="reference_image_analysis"),
 ) -> DesignAnalysisResponse:
-    _guard_ai_request(0, user, db, request)
+    _guard_ai_request(0, user, db, request, kind=task_key)
     if task_key not in {"reference_image_analysis", "pattern_identification"}:
         raise HTTPException(
             status_code=422,

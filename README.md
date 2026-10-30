@@ -36,7 +36,7 @@ worker, the try-on page reports an explicit unavailable state and saves no place
 | Q | Print preparation | `/print`: component-level print packages with pixel dimensions, effective-DPI checks (never upscaled), print area in cm, bleed, sRGB/source colour reporting, transparency preserved, per-component PNGs and a locally written PDF at exact physical size; approval workflow separate from AI previews |
 | R | Print marketplace | Studio directory with services, products, pricing modes, service areas, portfolio and reviews; quote requests, accept/decline, per-request threads |
 | S | Orders & quotations | Outgoing/incoming lists, the ten-state production workflow with role-checked transitions and an immutable audit trail, quote/agreed amounts, reviews and studio replies |
-| T | Admin dashboard | Stats, user/role management, studio verification, request oversight |
+| T | Admin dashboard | Stats, user/role management, suspension with reason/expiry and automatic lift, sessions, access review, reports queue, studio review, service-listing moderation, production monitoring, disputes, audit trail |
 | T2 | Business dashboard | `/business`: profile, offerings and pricing modes, service areas, portfolio uploads, listing visibility, recent orders |
 | — | User dashboard | `/dashboard`: readiness checklist, recent designs, saved looks, open requests, storage and notice feed |
 | — | Fashion studio hub | `/studio`: six entries (women, men, accessories, design library, fitting room, stylist) plus catalogue selection |
@@ -46,8 +46,8 @@ worker, the try-on page reports an explicit unavailable state and saves no place
 | U2 | AI studio services | Chat, fashion recommendations, style recommendations, outfit combinations, design descriptions, colour suggestions, design prompts, reference-image analysis and pattern identification, all through the same capability-aware fallback engine |
 | V | Notifications | In-app inbox with read state and deep links |
 | — | Saved pieces | `/favorites`: heart any catalogue piece; saved server-side per account and filterable inside the studios |
-| — | Catalogue management | `/admin` → Catalogue: create pieces, edit price/featured/visibility, soft-hide and restore, all audited |
-| W | Security & privacy | Audit log, private media served through authenticated endpoints, per-view reference photos (front/side/back/full body), explicit photo consent with version stamp, rate limits, security headers |
+| — | Catalogue management | `/admin` → Catalogue: create pieces, edit price/featured/visibility, soft-hide and restore; database-backed category/catalogue-style/profile-style vocabulary with usage counts, hide/rename/extend, and a pattern-piece template library that can be applied to a garment — all audited |
+| W | Security & privacy | Audit log, private media served through authenticated endpoints (administrators see metadata only), per-view reference photos (front/side/back/full body), explicit versioned photo-consent history, deletion-request workflow, session revocation, rate limits, security headers and an admin security-posture view |
 | X | Responsive & accessible | Mobile-first layout, keyboard-reachable controls, skip link, focus states, semantic tables/forms |
 
 ### Deliberate limitations
@@ -234,7 +234,10 @@ Base path `/api/v1`. Errors use `{"detail": {"code": "...", "message": "...", "f
 `designs/*`, `outfits/*` (incl. `GET /outfits/compare`), `media/*` (upload with `kind` + `view`,
 content, palette, analysis, print sheet), `ai/*` (capabilities, providers, assistant, generic and
 named studio tasks, image analysis, design suggestions), `marketplace/*`, `notifications/*`,
-`admin/*` (incl. provider order/models/tests, usage, errors and fallback events).
+`reports`, `disputes`, `privacy/*` (consent history and deletion requests), and `admin/*`
+(accounts and access review, suspensions and sessions, reports, disputes, taxonomy and templates,
+assets, business review, offerings, production, provider order/models/tests, usage, quota events,
+spending controls, consent, deletion requests, security posture, audit log).
 
 Interactive documentation is served at `/docs`.
 
@@ -277,10 +280,10 @@ make check        # ruff + ESLint + tsc + Pytest + Vitest + production build
 Individually:
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest          # 161 tests
+cd backend && ../.venv/bin/python -m pytest          # 199 tests
 cd backend && ../.venv/bin/python -m ruff check app tests
 cd frontend && npm run typecheck && npm run lint
-cd frontend && npx vitest run                        # 152 tests
+cd frontend && npx vitest run                        # 178 tests
 cd frontend && npm run build
 cd frontend && npm run e2e                           # needs `npm run e2e:install` once
 ```
@@ -288,16 +291,46 @@ cd frontend && npm run e2e                           # needs `npm run e2e:instal
 Backend tests run against SQLite with `DATABASE_URL=sqlite://` and cover auth (including
 sign-out-everywhere), profiles, measurement validation, account data export, catalogue, designs,
 outfits, media, avatars (consent gate, ownership, limits, editing, regeneration), AI fallbacks,
-catalogue discovery/favourites/management, layered design documents, cut-outs/crops, proof exports
-and admin rules. Frontend unit tests cover formatters, fitting-room slot exclusivity, persisted
+catalogue discovery/favourites/management, layered design documents, cut-outs/crops, proof exports, admin access, suspensions, reports, disputes, taxonomy, spending controls, private-asset access
+and deletion/consent workflows. Frontend unit tests cover formatters, fitting-room slot exclusivity, persisted
 display preferences, catalogue filter URLs and labels, the avatar adjustment/GLB scaling helpers,
 design-document helpers and undo/redo, the SVG studio stage and the editor page (open, edit, save,
 preview), every seeded garment silhouette (rendered to static SVG), Phase 5: rigged-asset
 integrity and budgets, headless three.js animation of the body **and** outfit/footwear, sample
 mapping/fidelity rules, responsive quality settings, the camera/animation control bar and the
-fitting-room page wiring, and Phase 6: mocked provider adapters (Gemini/Groq/OpenAI), retry/fallback
+fitting-room page wiring, Phase 6: mocked provider adapters (Gemini/Groq/OpenAI), retry/fallback
 classification, vision capability routing, admin ordering/models/connection tests, sanitised error
-logging, cost estimates and the atelier-tools UI.
+logging, cost estimates and the atelier-tools UI, and Phase 9: admin reports/access review,
+security posture, erasure approval and taxonomy visibility controls.
+
+### Phase 9 verification (administration, security & platform management)
+
+Verified on 2026-10-30 against the live API and the Vite dashboard:
+
+- **Access:** all new admin routes return `401` anonymously and `403` to members. The access
+  panel shows role, verification, active sessions and the current suspension; suspending
+  revokes every refresh session, blocks the existing access token and blocks login.
+  Reinstatement restores login, and a timed suspension lifts itself at expiry.
+- **Reports & disputes:** reports are limited to their author and administrators, duplicate
+  open reports return `409`, and closing one requires a resolution note (`422`). Disputes
+  validate that the caller is the customer or the workshop and allow one open dispute per
+  order; resolution is audited without bypassing the production state machine.
+- **Catalogue:** categories, catalogue styles and profile styles live in `catalog_terms`;
+  a custom category and a custom profile style created through the dashboard are immediately
+  usable, while hidden terms disappear from `/catalog/taxonomy` and are rejected for new
+  garments. Garment templates replace component lists without touching saved designs.
+- **AI:** spending policy persists daily request/token limits, an optional monthly budget and
+  a pause switch; a paused instance returns `429 quota_exceeded` before any provider call and
+  records the denial for `/admin/ai-quota-events`. Paid AI remains environment-disabled.
+- **Marketplace:** businesses can be verified, unverified, suspended and restored; service
+  listings can be hidden; `/admin/production` reports all ten states and flags open orders
+  unchanged for seven days; disputes can be resolved with a note.
+- **Privacy:** photo uploads stay private (`owner 200`, other member `404`, anonymous `401`);
+  administrators can delete an asset and its file but cannot browse image bytes. Deletion
+  requests require a decision; approval deletes the account, private files and dependent rows
+  and leaves an audit entry. Consent events are append-only and exposed per user.
+- `make check` passes: **199 backend tests**, **178 frontend tests**, ruff, ESLint
+  `--max-warnings 0`, TypeScript and the production Vite build.
 
 ### Phase 6 verification (multi-provider AI manager)
 
@@ -409,6 +442,7 @@ Verified against a live API on 2026-10-30:
 - [Installation guide](docs/INSTALLATION.md) — clean machine to running instance, Docker, troubleshooting.
 - [Development guide](docs/DEVELOPMENT.md) — conventions, commands, testing, adding endpoints and pages.
 - [Architecture](docs/ARCHITECTURE.md) — layers, data model, auth, AI routing, media pipeline, deployment.
+- [Administration & security](docs/ADMINISTRATION.md) — accounts, reports, disputes, taxonomy/templates, AI spending controls, privacy workflows and the security test matrix.
 - [Printing & production](docs/PRINTING.md) — print packages, DPI/colour rules, PDF/ZIP export, the ten-state workflow, reviews, and the honest printer-integration status.
 
 ---

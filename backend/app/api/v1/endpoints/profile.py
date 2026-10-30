@@ -27,7 +27,8 @@ from app.schemas.profile import (
     SizePreviewRequest,
     SizeRecommendationResponse,
 )
-from app.services import audit, sizing
+from app.services import audit, privacy, sizing
+from app.services import taxonomy as taxonomy_service
 from app.services.avatar_params import derive_parameters
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -71,7 +72,7 @@ def read_profile(user: CurrentUser, db: DbSession) -> ProfileWithUser:
     return _profile_payload(profile, user)
 
 
-CONSENT_VERSION = "2026-10"
+CONSENT_VERSION = privacy.PHOTO_CONSENT_VERSION
 
 
 def _validated_profile_photo(db, user, asset_id) -> None:
@@ -97,16 +98,54 @@ def update_profile(payload: ProfileInput, user: CurrentUser, db: DbSession) -> P
     if data.get("profile_photo_id"):
         _validated_profile_photo(db, user, data["profile_photo_id"])
 
+    if "fashion_styles" in data and data["fashion_styles"]:
+        allowed_styles = taxonomy_service.allowed_values(db, "profile_style")
+        unknown = [value for value in data["fashion_styles"] if value not in allowed_styles]
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "bad_style",
+                    "message": f"Unknown style: {', '.join(unknown)}.",
+                    "fields": {"fashion_styles": [f"Unknown style '{unknown[0]}'."]},
+                },
+            )
+
     consent = data.pop("photo_consent", None)
     if consent is True and profile.photo_consent_at is None:
         profile.photo_consent_at = datetime.now(UTC)
         profile.photo_consent_version = CONSENT_VERSION
+        privacy.record_consent(
+            db,
+            user_id=user.id,
+            kind="photo_analysis",
+            granted=True,
+            version=CONSENT_VERSION,
+            actor_id=user.id,
+        )
     elif consent is False:
         profile.photo_consent_at = None
         profile.photo_consent_version = None
+        privacy.record_consent(
+            db,
+            user_id=user.id,
+            kind="photo_analysis",
+            granted=False,
+            actor_id=user.id,
+        )
 
+    consent_fields = {
+        "share_measurements": "measurement_sharing",
+        "allow_photo_analysis": "photo_analysis",
+    }
     for field, value in data.items():
+        previous = getattr(profile, field, None)
         setattr(profile, field, value)
+        kind = consent_fields.get(field)
+        if kind and previous != value:
+            privacy.record_consent(
+                db, user_id=user.id, kind=kind, granted=bool(value), actor_id=user.id
+            )
     db.flush()
     audit.record(
         db,

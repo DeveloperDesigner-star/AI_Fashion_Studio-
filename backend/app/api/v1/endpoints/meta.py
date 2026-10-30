@@ -10,7 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.v1.deps import DbSession
 from app.core.config import settings
-from app.services.ai import registry
+from app.services.ai import registry, spending
 
 APP_VERSION = "1.0.0-phase1"
 
@@ -60,7 +60,7 @@ def public_config(db: DbSession) -> dict[str, Any]:
             "max_designs_per_user": settings.max_designs_per_user,
             "max_outfits_per_user": settings.max_outfits_per_user,
             "max_avatars_per_user": 5,
-            "ai_daily_requests": settings.ai_daily_request_limit,
+            "ai_daily_requests": spending.get_policy(db).daily_request_limit,
         },
         "features": {
             "ai_assistant": True,

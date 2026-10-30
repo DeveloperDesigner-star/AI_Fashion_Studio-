@@ -15,6 +15,7 @@ from app.core.security import TokenError, decode_token
 from app.db.session import get_db
 from app.models.enums import UserRole
 from app.models.user import User
+from app.services import access
 
 bearer_scheme = HTTPBearer(auto_error=False, description="JWT access token")
 
@@ -44,7 +45,7 @@ def get_current_user(
     user = db.get(User, user_id)
     if user is None or user.deleted_at is not None:
         raise HTTPException(status_code=401, detail={"code": "user_not_found", "message": "Account not found."})
-    if not user.is_active:
+    if not user.is_active and access.suspension_blocks(db, user):
         raise HTTPException(status_code=403, detail={"code": "account_disabled", "message": "Account disabled."})
     return user
 

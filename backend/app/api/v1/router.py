@@ -12,6 +12,7 @@ from app.api.v1.endpoints import (
     marketplace,
     media,
     meta,
+    moderation,
     notifications,
     outfits,
     print_job,
@@ -33,4 +34,7 @@ api_router.include_router(media.router)
 api_router.include_router(ai.router)
 api_router.include_router(marketplace.router)
 api_router.include_router(notifications.router)
+api_router.include_router(moderation.reports_router)
+api_router.include_router(moderation.disputes_router)
+api_router.include_router(moderation.privacy_router)
 api_router.include_router(admin.router)

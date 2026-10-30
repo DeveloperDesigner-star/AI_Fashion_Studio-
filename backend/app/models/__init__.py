@@ -18,6 +18,15 @@ from app.models.business import (
 from app.models.catalog import Favorite, Garment, Look
 from app.models.design import Design
 from app.models.media import MediaAsset
+from app.models.moderation import (
+    AccountDeletionRequest,
+    AccountSuspension,
+    AISpendingPolicy,
+    CatalogTerm,
+    ConsentRecord,
+    OrderDispute,
+    UserReport,
+)
 from app.models.notification import Notification
 from app.models.outfit import Outfit, OutfitItem
 from app.models.print_job import PrintFile, PrintPackage
@@ -49,6 +58,13 @@ __all__ = [
     "Look",
     "Design",
     "MediaAsset",
+    "AccountDeletionRequest",
+    "AccountSuspension",
+    "AISpendingPolicy",
+    "CatalogTerm",
+    "ConsentRecord",
+    "OrderDispute",
+    "UserReport",
     "Notification",
     "Outfit",
     "OutfitItem",
