@@ -1122,7 +1122,7 @@ export function TryOnPage() {
           <section className="border border-line bg-paper">
             <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
               <p className="label-xs">4 · 3D accessories</p>
-              <Badge tone="neutral">Fit to rig</Badge>
+              <Badge tone="neutral">Rig-attached</Badge>
             </div>
             <div className="flex flex-wrap gap-1 px-4 pt-3">
               {ACCESSORY_SLOT_ORDER.map((slot) => (
