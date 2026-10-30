@@ -5,11 +5,17 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Uuid, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.enums import BodyShape, GenderStyle, MeasurementSource, UnitSystem
+from app.models.enums import (
+    BodyShape,
+    GenderStyle,
+    MeasurementSource,
+    PreferredFit,
+    UnitSystem,
+)
 
 
 class Profile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -36,6 +42,19 @@ class Profile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     city: Mapped[str | None] = mapped_column(String(120))
     country: Mapped[str | None] = mapped_column(String(80))
     preferred_sizes: Mapped[str | None] = mapped_column(String(40))
+    preferred_fit: Mapped[str] = mapped_column(
+        String(20), default=PreferredFit.REGULAR, nullable=False
+    )
+    fashion_styles: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    preferred_colors: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    profile_photo_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("media_assets.id", ondelete="SET NULL")
+    )
+    # Privacy & consent. All default to the least-sharing option.
+    share_measurements: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    allow_photo_analysis: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    photo_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    photo_consent_version: Mapped[str | None] = mapped_column(String(20))
     onboarding_step: Mapped[str | None] = mapped_column(String(40))
 
     user = relationship("User", back_populates="profile")

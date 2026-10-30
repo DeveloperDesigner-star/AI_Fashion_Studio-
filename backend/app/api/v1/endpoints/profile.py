@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.api.v1.deps import CurrentUser, DbSession
 from app.models.avatar import Avatar
 from app.models.design import Design
 from app.models.enums import GenderStyle
+from app.models.media import MediaAsset
 from app.models.outfit import Outfit
 from app.models.profile import Measurement, Profile
 from app.schemas.avatar import AvatarRead
@@ -70,12 +71,51 @@ def read_profile(user: CurrentUser, db: DbSession) -> ProfileWithUser:
     return _profile_payload(profile, user)
 
 
+CONSENT_VERSION = "2026-10"
+
+
+def _validated_profile_photo(db, user, asset_id) -> None:
+    asset = db.scalar(
+        select(MediaAsset).where(MediaAsset.id == asset_id, MediaAsset.user_id == user.id)
+    )
+    if asset is None or not asset.mime_type.startswith("image/"):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "bad_photo",
+                "message": "Choose one of your own uploaded images for the profile photo.",
+                "fields": {"profile_photo_id": ["Unknown or unauthorised image."]},
+            },
+        )
+
+
 @router.put("", response_model=ProfileWithUser)
 def update_profile(payload: ProfileInput, user: CurrentUser, db: DbSession) -> ProfileWithUser:
     profile = _get_or_create_profile(db, user)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+
+    if data.get("profile_photo_id"):
+        _validated_profile_photo(db, user, data["profile_photo_id"])
+
+    consent = data.pop("photo_consent", None)
+    if consent is True and profile.photo_consent_at is None:
+        profile.photo_consent_at = datetime.now(UTC)
+        profile.photo_consent_version = CONSENT_VERSION
+    elif consent is False:
+        profile.photo_consent_at = None
+        profile.photo_consent_version = None
+
+    for field, value in data.items():
         setattr(profile, field, value)
     db.flush()
+    audit.record(
+        db,
+        action="profile.updated",
+        user=user,
+        resource_type="profile",
+        resource_id=profile.id,
+        detail={"fields": sorted(data.keys())},
+    )
     return _profile_payload(profile, user)
 
 

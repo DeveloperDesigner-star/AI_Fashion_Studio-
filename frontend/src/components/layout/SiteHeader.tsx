@@ -122,6 +122,7 @@ export function SiteHeader() {
                     {[
                       { to: '/dashboard', label: 'Dashboard' },
                       { to: '/designs', label: 'Saved designs' },
+                      { to: '/avatar', label: 'Avatar studio' },
                       { to: '/profile', label: 'Profile & measurements' },
                       { to: '/outfits', label: 'Saved outfits' },
                       { to: '/orders', label: 'Requests & orders' },
@@ -205,6 +206,7 @@ export function SiteHeader() {
               <div className="mt-1 border-t border-line pt-2">
                 {[
                   { to: '/dashboard', label: 'Dashboard' },
+                  { to: '/avatar', label: 'Avatar studio' },
                   { to: '/outfits', label: 'Saved outfits' },
                   { to: '/profile', label: 'Profile & measurements' },
                   { to: '/settings', label: 'Settings' },

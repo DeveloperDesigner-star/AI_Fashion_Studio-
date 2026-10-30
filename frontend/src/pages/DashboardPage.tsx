@@ -70,10 +70,10 @@ export function DashboardPage() {
     },
     {
       label: 'Create an avatar',
-      detail: 'The fitting room dresses a parametric figure built from your measurements.',
+      detail: 'Pick a bundled 3D base model and adjust it with your measurements.',
       done: Boolean(avatars.data?.length),
-      to: '/profile',
-      cta: 'Create avatar',
+      to: '/avatar',
+      cta: 'Open avatar studio',
     },
     {
       label: 'Save your first design',

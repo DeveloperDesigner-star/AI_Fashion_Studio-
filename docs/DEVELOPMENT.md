@@ -153,7 +153,8 @@ points `MEDIA_ROOT` at a temp directory, seeds the catalogue and exposes `client
 user headers) and `admin` fixtures. Tests assert status codes and JSON contracts, not internals.
 
 **Frontend** (`src/**/*.test.ts`): Vitest with jsdom and Testing Library matchers. Current coverage
-focuses on deterministic logic — formatters, fitting-room slot rules, display preferences.
+focuses on deterministic logic — formatters, fitting-room slot rules, display preferences and the
+avatar adjustment/GLB-scaling helpers (`src/lib/avatarStudio.test.ts`).
 
 **E2E** (`frontend/e2e/`): Playwright smoke specs for the public shell and auth form validation. The
 browsers are not committed; `npm run e2e:install` downloads Chromium once.
@@ -178,4 +179,6 @@ browsers are not committed; `npm run e2e:install` downloads Chromium once.
 | Change the AI prompt | `backend/app/services/ai/prompts.py`; keep catalogue and size context injected by the service |
 | Add a provider | Implement the client in `services/ai/providers/`, register it, respect `enabled` + missing keys |
 | Add a design token | Extend the `@theme` block in `src/index.css` |
+| Rebuild the avatar GLB models | `python scripts/build_avatar_models.py` (writes `frontend/public/models/*.glb` + manifest) |
+| Add or tune a base avatar | `backend/app/services/avatar_models.py` (`BASE_MODELS`) — keep `asset_url` in sync with the generated GLB |
 | Change upload limits | `MAX_UPLOAD_MB`, `MAX_IMAGE_PIXELS` in `.env` (and `client_max_body_size` in nginx) |

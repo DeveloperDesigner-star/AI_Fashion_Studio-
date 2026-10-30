@@ -113,3 +113,59 @@ def test_list_and_delete_media(client: TestClient, auth: dict[str, str]) -> None
 
     assert client.delete(f"/api/v1/media/{asset['id']}", headers=auth).status_code == 204
     assert client.get("/api/v1/media", headers=auth).json()["total"] == 0
+
+
+def test_reference_photo_views_are_validated(client: TestClient, auth: dict[str, str]) -> None:
+    response = client.post(
+        "/api/v1/media/upload",
+        headers=auth,
+        files={"file": ("front.jpg", make_image_bytes((900, 1400)), "image/jpeg")},
+        data={"kind": "photo", "view": "front"},
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["photo_view"] == "front"
+
+    bad_view = client.post(
+        "/api/v1/media/upload",
+        headers=auth,
+        files={"file": ("front.jpg", make_image_bytes((900, 1400)), "image/jpeg")},
+        data={"kind": "photo", "view": "upside_down"},
+    )
+    assert bad_view.status_code == 422
+    assert bad_view.json()["detail"]["code"] == "bad_view"
+
+    print_with_view = client.post(
+        "/api/v1/media/upload",
+        headers=auth,
+        files={"file": ("art.png", make_image_bytes((900, 1400)), "image/jpeg")},
+        data={"kind": "print", "view": "front"},
+    )
+    assert print_with_view.status_code == 422
+
+
+def test_reference_photos_require_a_usable_size(client: TestClient, auth: dict[str, str]) -> None:
+    tiny = client.post(
+        "/api/v1/media/upload",
+        headers=auth,
+        files={"file": ("tiny.jpg", make_image_bytes((320, 400)), "image/jpeg")},
+        data={"kind": "photo", "view": "front"},
+    )
+    assert tiny.status_code == 422
+    assert tiny.json()["detail"]["code"] == "image_too_small"
+
+    landscape_full_body = client.post(
+        "/api/v1/media/upload",
+        headers=auth,
+        files={"file": ("wide.jpg", make_image_bytes((1600, 900)), "image/jpeg")},
+        data={"kind": "photo", "view": "full_body"},
+    )
+    assert landscape_full_body.status_code == 422
+    assert landscape_full_body.json()["detail"]["code"] == "bad_aspect_ratio"
+
+    accepted = client.post(
+        "/api/v1/media/upload",
+        headers=auth,
+        files={"file": ("body.jpg", make_image_bytes((900, 1500)), "image/jpeg")},
+        data={"kind": "photo", "view": "full_body"},
+    )
+    assert accepted.status_code == 201

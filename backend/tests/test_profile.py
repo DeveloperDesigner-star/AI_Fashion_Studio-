@@ -144,3 +144,97 @@ def test_profile_export_contains_portable_data(client: TestClient, auth: dict[st
 
 def test_profile_export_requires_authentication(client: TestClient) -> None:
     assert client.get("/api/v1/profile/export").status_code == 401
+
+
+def test_fashion_preferences_and_privacy_persist(client: TestClient, auth: dict[str, str]) -> None:
+    response = client.put(
+        "/api/v1/profile",
+        headers=auth,
+        json={
+            "style_gender": "menswear",
+            "age": 32,
+            "height_cm": 181,
+            "weight_kg": 78,
+            "preferred_sizes": "L",
+            "preferred_fit": "slim",
+            "fashion_styles": ["tailored", "minimal", "tailored"],
+            "preferred_colors": ["#1A1A1A", "#C4B7A6"],
+            "share_measurements": True,
+            "allow_photo_analysis": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["preferred_fit"] == "slim"
+    assert body["fashion_styles"] == ["tailored", "minimal"]
+    assert body["preferred_colors"] == ["#1a1a1a", "#c4b7a6"]
+    assert body["share_measurements"] is True
+    assert body["allow_photo_analysis"] is True
+
+    reloaded = client.get("/api/v1/profile", headers=auth).json()
+    assert reloaded["age"] == 32
+    assert reloaded["height_cm"] == 181
+    assert reloaded["preferred_sizes"] == "L"
+    assert reloaded["fashion_styles"] == ["tailored", "minimal"]
+
+
+def test_profile_defaults_are_private(client: TestClient, auth: dict[str, str]) -> None:
+    body = client.get("/api/v1/profile", headers=auth).json()
+    assert body["preferred_fit"] == "regular"
+    assert body["fashion_styles"] == []
+    assert body["preferred_colors"] == []
+    assert body["share_measurements"] is False
+    assert body["allow_photo_analysis"] is False
+    assert body["photo_consent_at"] is None
+
+
+def test_invalid_preferences_are_rejected(client: TestClient, auth: dict[str, str]) -> None:
+    assert client.put("/api/v1/profile", headers=auth, json={"preferred_fit": "oversized"}).status_code == 422
+    assert (
+        client.put("/api/v1/profile", headers=auth, json={"fashion_styles": ["not_a_style"]}).status_code
+        == 422
+    )
+    assert (
+        client.put("/api/v1/profile", headers=auth, json={"preferred_colors": ["red"]}).status_code == 422
+    )
+
+
+def test_photo_consent_can_be_granted_and_revoked(client: TestClient, auth: dict[str, str]) -> None:
+    granted = client.put("/api/v1/profile", headers=auth, json={"photo_consent": True})
+    assert granted.status_code == 200
+    body = granted.json()
+    assert body["photo_consent_at"] is not None
+    assert body["photo_consent_version"]
+
+    revoked = client.put("/api/v1/profile", headers=auth, json={"photo_consent": False}).json()
+    assert revoked["photo_consent_at"] is None
+    assert revoked["photo_consent_version"] is None
+
+
+def test_profile_photo_must_be_owned_media(
+    client: TestClient, auth: dict[str, str], other_auth: dict[str, str]
+) -> None:
+    from tests.conftest import make_image_bytes
+
+    uploaded = client.post(
+        "/api/v1/media/upload",
+        headers=other_auth,
+        files={"file": ("face.jpg", make_image_bytes((600, 600)), "image/jpeg")},
+        data={"kind": "photo", "view": "profile"},
+    )
+    assert uploaded.status_code == 201
+    response = client.put(
+        "/api/v1/profile", headers=auth, json={"profile_photo_id": uploaded.json()["id"]}
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "bad_photo"
+
+    own = client.post(
+        "/api/v1/media/upload",
+        headers=auth,
+        files={"file": ("face.jpg", make_image_bytes((600, 600)), "image/jpeg")},
+        data={"kind": "photo", "view": "profile"},
+    ).json()
+    accepted = client.put("/api/v1/profile", headers=auth, json={"profile_photo_id": own["id"]})
+    assert accepted.status_code == 200
+    assert accepted.json()["profile_photo_id"] == own["id"]

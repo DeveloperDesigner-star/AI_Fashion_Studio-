@@ -32,6 +32,13 @@ const entries = [
     tone: 'bg-bone',
   },
   {
+    to: '/avatar',
+    label: 'Avatar studio',
+    kicker: 'Identity',
+    copy: 'Choose a GLB base figure, adjust the proportions and keep up to five avatars.',
+    tone: 'bg-bone',
+  },
+  {
     to: '/designs',
     label: 'Design studio',
     kicker: 'Library',

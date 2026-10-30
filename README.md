@@ -4,7 +4,7 @@ A production-shaped web platform for AI-assisted fashion design: parametric avat
 component-level garment editor, a WebGL fitting room, print preparation, and a quoting
 marketplace between clients and workshops.
 
-**Status: Phase 1 complete and verified.** Backend (FastAPI + PostgreSQL/SQLite) and frontend
+**Status: Phases 1–2 complete and verified.** Backend (FastAPI + PostgreSQL/SQLite) and frontend
 (React + TypeScript + Vite + Tailwind + React Three Fiber) run together; every screen in the route
 table is implemented against a real API. AI features degrade explicitly when no provider key is
 configured — they never fabricate model output.
@@ -18,8 +18,8 @@ configured — they never fabricate model output.
 | A | Landing & onboarding | Editorial landing page, three-step onboarding wizard (body → appearance → size) with live avatar preview |
 | B | Auth & users | Argon2id passwords, short-lived access token in memory, httpOnly refresh cookie, rotation, logout-all, change password, delete account |
 | C | Womenswear & menswear studios | Filterable catalogue (`/studio/women`, `/studio/men`) with search, slot/climate/occasion filters, sorting, pagination, curated look banner |
-| D | Profile & measurements | Metric/imperial editing (stored metric), body-shape derivation, size recommendation, size chart modal |
-| E | Avatar management | Up to five parametric avatars, primary selection, re-derivation from measurements, GLB export |
+| D | Profile & measurements | Metric/imperial editing (stored metric), womenswear/menswear focus, age, height, weight, usual size, optional measurements, preferred fit, fashion styles, colour palette, profile photo, privacy toggles |
+| E | Avatar management | `/avatar`: five-avatar limit, four bundled GLB base models, 7-step creation wizard (details → photos + consent → base model → customisation → manual adjustment → save → edit/regenerate), primary selection, GLB download |
 | F | Catalogue | 25 original seeded garments with palette, fabric, silhouette and component data |
 | G | Design editor | Per-component colour, fabric, pattern, embroidery, fit notes, print placement |
 | H | Component customisation | Components are independent; exclusivity rules (dress ↔ top/bottom) enforced in UI *and* API |
@@ -42,13 +42,16 @@ configured — they never fabricate model output.
 | — | Settings | `/settings`: account name/opt-in, unit and motion preferences, JSON data export, sign-out-everywhere |
 | U | AI provider management | Enable/disable providers, model overrides, reset to env defaults, seven-day usage breakdown |
 | V | Notifications | In-app inbox with read state and deep links |
-| W | Security & privacy | Audit log, private media served through authenticated endpoints, rate limits, security headers |
+| W | Security & privacy | Audit log, private media served through authenticated endpoints, per-view reference photos (front/side/back/full body), explicit photo consent with version stamp, rate limits, security headers |
 | X | Responsive & accessible | Mobile-first layout, keyboard-reachable controls, skip link, focus states, semantic tables/forms |
 
 ### Deliberate limitations
 
 - **No stock photography.** Every garment and avatar is drawn procedurally (SVG for cards, Three.js
   meshes for 3D). Nothing is presented as a real product photo.
+- **Avatars are illustrations, not body scans.** Four bundled GLB mannequins (`willow`, `atlas`,
+  `line`, `curve`) are scaled from the measurements the user types. No photograph is ever
+  reconstructed into a body, and weight, age or exact measurements are never inferred from an image.
 - **3D try-on is stylistic, not photoreal.** It maps garment colourways onto a parametric mannequin;
   it does not simulate cloth physics or the user's own photo.
 - **AI without keys is honest.** With no `GEMINI_API_KEY`/`GROQ_API_KEY`, assistant replies come from
@@ -177,9 +180,10 @@ Frontend build-time values live in `frontend/.env.example` (`VITE_API_BASE_URL=/
 Base path `/api/v1`. Errors use `{"detail": {"code": "...", "message": "...", "fields": {...}}}`.
 
 `health`, `meta/config`, `auth/*`, `profile/*` (incl. `POST /size-preview`, `GET /size-chart`),
-`avatars/*` (incl. `POST /avatars/preview`, `GET /avatars/{id}/export`), `catalog/*`,
-`designs/*`, `outfits/*` (incl. `GET /outfits/compare`), `media/*` (upload, content, palette,
-analysis, print sheet), `ai/*` (capabilities, assistant, design analysis), `marketplace/*`,
+`avatars/*` (`GET /avatars/base-models`, `POST /avatars/preview`, CRUD, `POST /avatars/{id}/regenerate`),
+`catalog/*`,
+`designs/*`, `outfits/*` (incl. `GET /outfits/compare`), `media/*` (upload with `kind` + `view`,
+content, palette, analysis, print sheet), `ai/*` (capabilities, assistant, design analysis), `marketplace/*`,
 `notifications/*`, `admin/*`.
 
 Interactive documentation is served at `/docs`.
@@ -200,9 +204,10 @@ Interactive documentation is served at `/docs`.
 | `/onboarding` | user | Three-step setup with live avatar and sizing |
 | `/dashboard` | user | Personal dashboard |
 | `/designs` | user | Saved design library |
+| `/avatar` | user | Avatar studio: list, 7-step wizard, GLB preview and download |
 | `/fitting-room` | user | 3D fitting room |
 | `/outfits` | user | Saved outfits and comparison |
-| `/profile` | user | Measurements, avatars, photos, security |
+| `/profile` | user | Measurements, style preferences, photos, privacy and consent, security |
 | `/settings` | user | Account, display, privacy, sessions |
 | `/assistant` | user | AI stylist |
 | `/orders`, `/orders/:id` | user | Requests, quotes and threads |
@@ -218,18 +223,33 @@ make check        # ruff + ESLint + tsc + Pytest + Vitest + production build
 Individually:
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest          # 91 tests
+cd backend && ../.venv/bin/python -m pytest          # 108 tests
 cd backend && ../.venv/bin/python -m ruff check app tests
 cd frontend && npm run typecheck && npm run lint
-cd frontend && npx vitest run                        # 16 tests
+cd frontend && npx vitest run                        # 23 tests
 cd frontend && npm run build
 cd frontend && npm run e2e                           # needs `npm run e2e:install` once
 ```
 
 Backend tests run against SQLite with `DATABASE_URL=sqlite://` and cover auth (including
 sign-out-everywhere), profiles, measurement validation, account data export, catalogue, designs,
-outfits, media, AI fallbacks, marketplace and admin rules. Frontend unit tests cover formatters,
-fitting-room slot exclusivity and persisted display preferences.
+outfits, media, avatars (consent gate, ownership, limits, editing, regeneration), AI fallbacks,
+marketplace and admin rules. Frontend unit tests cover formatters, fitting-room slot exclusivity,
+persisted display preferences and the avatar adjustment/GLB scaling helpers.
+
+### Phase 2 verification (profile & avatar system)
+
+Verified against a live API on 2026-10-30:
+
+- Preferences (fit, styles, colours, privacy flags) persist round-trip and reject unknown values.
+- Photo upload accepts front/side/back/full body, enforces 480 px minimum edge and portrait framing
+  for full-body shots, rejects non-images and unknown views, and serves content only to the owner.
+- Consent is required before an avatar may reference a photo (`consent_required`), and revoking it
+  is recorded without deleting existing uploads.
+- Creating, loading, editing and regenerating an avatar all succeed; out-of-range sliders and unknown
+  base models are rejected; another account receives `404` for avatars and media.
+- GLB models are served from `/models/*.glb` (77–86 kB each) and are downloadable from the wizard via
+  the client-side `GLTFExporter`.
 
 ## Documentation
 

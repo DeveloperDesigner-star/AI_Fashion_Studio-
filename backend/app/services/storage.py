@@ -62,6 +62,8 @@ def save_image(
     original_filename: str,
     kind: str,
     make_thumbnail: bool = True,
+    min_edge: int | None = None,
+    min_portrait_ratio: float | None = None,
 ) -> StoredImage:
     if not data:
         raise UploadError("The uploaded file is empty.")
@@ -89,6 +91,16 @@ def save_image(
             width, height = image.size
             if width * height > settings.max_image_pixels:
                 raise UploadError("Image resolution is too large.", code="image_too_large")
+            if min_edge and min(width, height) < min_edge:
+                raise UploadError(
+                    f"Image is too small. Use at least {min_edge} px on the shortest side.",
+                    code="image_too_small",
+                )
+            if min_portrait_ratio and height < width * min_portrait_ratio:
+                raise UploadError(
+                    "A full-body photo should be portrait orientation (taller than wide).",
+                    code="bad_aspect_ratio",
+                )
 
             if image.mode in {"RGBA", "LA", "P"}:
                 background = Image.new("RGB", image.size, (247, 244, 239))

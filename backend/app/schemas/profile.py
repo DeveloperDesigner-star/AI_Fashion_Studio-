@@ -6,9 +6,15 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.enums import BodyShape, GenderStyle, MeasurementSource, UnitSystem
+from app.models.enums import (
+    BodyShape,
+    GenderStyle,
+    MeasurementSource,
+    PreferredFit,
+    UnitSystem,
+)
 
 
 class ORMModel(BaseModel):
@@ -59,6 +65,20 @@ class MeasurementRead(ORMModel):
     updated_at: datetime
 
 
+FASHION_STYLES: tuple[str, ...] = (
+    "minimal",
+    "classic",
+    "tailored",
+    "streetwear",
+    "romantic",
+    "bohemian",
+    "sporty",
+    "avant_garde",
+    "vintage",
+    "resort",
+)
+
+
 class ProfileInput(BaseModel):
     display_name: str | None = Field(default=None, max_length=80)
     bio: str | None = Field(default=None, max_length=600)
@@ -73,6 +93,43 @@ class ProfileInput(BaseModel):
     city: str | None = Field(default=None, max_length=120)
     country: str | None = Field(default=None, max_length=80)
     preferred_sizes: str | None = Field(default=None, max_length=40)
+    preferred_fit: PreferredFit | None = None
+    fashion_styles: list[str] | None = Field(default=None, max_length=8)
+    preferred_colors: list[str] | None = Field(default=None, max_length=6)
+    profile_photo_id: uuid.UUID | None = None
+    share_measurements: bool | None = None
+    allow_photo_analysis: bool | None = None
+    photo_consent: bool | None = Field(
+        default=None,
+        description="Explicit consent for storing and processing reference photos.",
+    )
+
+    @field_validator("fashion_styles")
+    @classmethod
+    def _known_styles(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        cleaned = []
+        for style in value:
+            if style not in FASHION_STYLES:
+                raise ValueError(f"Unknown style '{style}'.")
+            if style not in cleaned:
+                cleaned.append(style)
+        return cleaned
+
+    @field_validator("preferred_colors")
+    @classmethod
+    def _hex_colors(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        cleaned = []
+        for colour in value:
+            if not isinstance(colour, str) or len(colour) != 7 or not colour.startswith("#"):
+                raise ValueError("Colours must be hex values such as #1a1a1a.")
+            int(colour[1:], 16)  # raises ValueError for non-hex characters
+            if colour.lower() not in cleaned:
+                cleaned.append(colour.lower())
+        return cleaned
 
 
 class ProfileRead(ORMModel):
@@ -90,8 +147,21 @@ class ProfileRead(ORMModel):
     city: str | None
     country: str | None
     preferred_sizes: str | None
+    preferred_fit: str
+    fashion_styles: list[str] = []
+    preferred_colors: list[str] = []
+    profile_photo_id: uuid.UUID | None = None
+    share_measurements: bool = False
+    allow_photo_analysis: bool = False
+    photo_consent_at: datetime | None = None
+    photo_consent_version: str | None = None
     measurements: MeasurementRead | None = None
     updated_at: datetime
+
+    @field_validator("fashion_styles", "preferred_colors", mode="before")
+    @classmethod
+    def _default_list(cls, value: Any) -> Any:
+        return value or []
 
 
 class ProfileWithUser(ProfileRead):

@@ -6,14 +6,16 @@ import { fetchers, qk } from '@/lib/queries'
 import { useAuthStore } from '@/stores/authStore'
 import { toast } from '@/stores/toastStore'
 import { useMediaUrl } from '@/hooks/useMediaUrl'
+import { GlbAvatar } from '@/components/three/GlbAvatar'
 import { AvatarScene } from '@/components/three/AvatarScene'
-import { Button } from '@/components/ui/Button'
-import { Input, Select } from '@/components/ui/Field'
+import { Button, LinkButton } from '@/components/ui/Button'
+import { Input, Select, Toggle } from '@/components/ui/Field'
 import { ColorField } from '@/components/ui/ColorField'
 import { Modal } from '@/components/ui/Modal'
 import { Badge, ErrorState, LoadingBlock, Notice, Progress, StatTile } from '@/components/ui/Primitives'
 import { cmToInches, formatBytes, formatDate, inchesToCm, titleCase } from '@/lib/format'
 import { getPreferredUnits, setPreferredUnits, type UnitSystem } from '@/lib/preferences'
+import { clampAdjustments, photoViewLabel } from '@/lib/avatarStudio'
 import type {
   Avatar,
   MediaAsset,
@@ -25,6 +27,21 @@ import type {
 } from '@/lib/types'
 
 type Unit = UnitSystem
+
+const STYLE_OPTIONS = [
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'classic', label: 'Classic' },
+  { value: 'tailored', label: 'Tailored' },
+  { value: 'streetwear', label: 'Streetwear' },
+  { value: 'romantic', label: 'Romantic' },
+  { value: 'bohemian', label: 'Bohemian' },
+  { value: 'sporty', label: 'Sporty' },
+  { value: 'avant_garde', label: 'Avant-garde' },
+  { value: 'vintage', label: 'Vintage' },
+  { value: 'resort', label: 'Resort' },
+] as const
+
+const PALETTE = ['#1a1a1a', '#f4f1ea', '#c4b7a6', '#6b7b5e', '#a2402f', '#2f4a6b', '#c9a15a', '#8d6a8f']
 
 const measurementFields = [
   { key: 'bust_cm', label: 'Bust / chest' },
@@ -63,6 +80,13 @@ export function ProfilePage() {
   const [age, setAge] = useState('')
   const [styleGender, setStyleGender] = useState<'womenswear' | 'menswear' | 'unisex'>('womenswear')
   const [preferredSizes, setPreferredSizes] = useState('')
+  const [preferredFit, setPreferredFit] = useState<'slim' | 'regular' | 'loose'>('regular')
+  const [fashionStyles, setFashionStyles] = useState<string[]>([])
+  const [preferredColors, setPreferredColors] = useState<string[]>([])
+  const [shareMeasurements, setShareMeasurements] = useState(false)
+  const [allowPhotoAnalysis, setAllowPhotoAnalysis] = useState(false)
+  const [profilePhotoId, setProfilePhotoId] = useState<string | null>(null)
+  const [photoView, setPhotoView] = useState('front')
   const [displayName, setDisplayName] = useState('')
   const [city, setCity] = useState('')
   const [country, setCountry] = useState('')
@@ -101,6 +125,12 @@ export function ProfilePage() {
     setAge(profile.age ? String(profile.age) : '')
     setStyleGender(profile.style_gender)
     setPreferredSizes(profile.preferred_sizes ?? '')
+    setPreferredFit(profile.preferred_fit ?? 'regular')
+    setFashionStyles(profile.fashion_styles ?? [])
+    setPreferredColors(profile.preferred_colors ?? [])
+    setShareMeasurements(Boolean(profile.share_measurements))
+    setAllowPhotoAnalysis(Boolean(profile.allow_photo_analysis))
+    setProfilePhotoId(profile.profile_photo_id ?? null)
     setDisplayName(profile.display_name ?? '')
     setCity(profile.city ?? '')
     setCountry(profile.country ?? '')
@@ -159,6 +189,12 @@ export function ProfilePage() {
         weight_kg: weight ? Math.round(weightKg * 10) / 10 : null,
         age: age ? Number(age) : null,
         preferred_sizes: preferredSizes || null,
+        preferred_fit: preferredFit,
+        fashion_styles: fashionStyles,
+        preferred_colors: preferredColors,
+        profile_photo_id: profilePhotoId,
+        share_measurements: shareMeasurements,
+        allow_photo_analysis: allowPhotoAnalysis,
         city: city || null,
         country: country || null,
         skin_tone: skinTone,
@@ -190,6 +226,12 @@ export function ProfilePage() {
         skin_tone: skinTone,
         hair_color: hairColor,
         hair_style: hairStyle,
+        base_model:
+          newAvatarPresentation === 'masculine'
+            ? 'atlas'
+            : newAvatarPresentation === 'neutral'
+              ? 'line'
+              : 'willow',
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.avatars })
@@ -219,7 +261,7 @@ export function ProfilePage() {
   })
 
   const uploadPhoto = useMutation({
-    mutationFn: (file: File) => api.upload<MediaAsset>('/media/upload', file, { kind: 'photo' }),
+    mutationFn: (file: File) => api.upload<MediaAsset>('/media/upload', file, { kind: 'photo', view: photoView }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.media })
       toast.success('Photo uploaded', 'It stays private to your account.')
@@ -234,6 +276,25 @@ export function ProfilePage() {
       queryClient.invalidateQueries({ queryKey: qk.media })
       toast.success('File deleted')
     },
+  })
+
+  const setConsent = useMutation({
+    mutationFn: (value: boolean) => api.put('/profile', { photo_consent: value }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.profile })
+      toast.success('Privacy settings saved')
+    },
+    onError: () => toast.error('Could not save consent'),
+  })
+
+  const useAsProfilePhoto = useMutation({
+    mutationFn: (assetId: string | null) => api.put('/profile', { profile_photo_id: assetId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.profile })
+      toast.success('Profile photo updated')
+    },
+    onError: (error) =>
+      toast.error('Could not set the photo', error instanceof ApiError ? error.message : 'Try again.'),
   })
 
   const analysePhoto = async (asset: MediaAsset) => {
@@ -333,17 +394,29 @@ export function ProfilePage() {
                 <p className="label-xs">Primary avatar</p>
                 <p className="font-display text-lg">{primaryAvatar?.name ?? 'Not created'}</p>
               </div>
-              <Button size="sm" variant="outline" onClick={() => setAvatarModalOpen(true)}>
-                New
-              </Button>
+              <div className="flex gap-1.5">
+                <LinkButton to="/avatar" size="sm" variant="outline">
+                  Studio
+                </LinkButton>
+                <Button size="sm" variant="outline" onClick={() => setAvatarModalOpen(true)}>
+                  New
+                </Button>
+              </div>
             </div>
-            <AvatarScene
-              parameters={primaryAvatar?.parameters ?? null}
-              skinTone={primaryAvatar?.skin_tone ?? skinTone}
-              hairColor={primaryAvatar?.hair_color ?? hairColor}
-              hairStyle={primaryAvatar?.hair_style ?? hairStyle}
-              className="aspect-[4/5] w-full"
-            />
+            {primaryAvatar ? (
+              <GlbAvatar
+                modelId={primaryAvatar.base_model}
+                adjustments={clampAdjustments(primaryAvatar.adjustments)}
+                parameters={primaryAvatar.parameters}
+                skinTone={primaryAvatar.skin_tone}
+                hairColor={primaryAvatar.hair_color}
+                hairStyle={primaryAvatar.hair_style}
+                autoRotate={false}
+                className="aspect-[4/5] w-full"
+              />
+            ) : (
+              <AvatarScene parameters={null} skinTone={skinTone} hairColor={hairColor} hairStyle={hairStyle} className="aspect-[4/5] w-full" />
+            )}
             {primaryAvatar && (
               <div className="space-y-3 border-t border-line p-4">
                 <div className="grid grid-cols-3 gap-2 text-xs">
@@ -496,6 +569,89 @@ export function ProfilePage() {
             </div>
 
             <div className="mt-6 border-t border-line pt-4">
+              <p className="label-xs mb-3">Style preferences</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs text-ink-soft">Preferred fit</p>
+                  <div className="mt-1.5 inline-flex border border-line text-[0.625rem] uppercase tracking-[0.12em]">
+                    {(['slim', 'regular', 'loose'] as const).map((fit) => (
+                      <button
+                        key={fit}
+                        type="button"
+                        onClick={() => setPreferredFit(fit)}
+                        aria-pressed={preferredFit === fit}
+                        className={`px-3 py-1.5 ${preferredFit === fit ? 'bg-ink text-paper' : 'text-ink-muted'}`}
+                      >
+                        {fit}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-ink-soft">Usual size</p>
+                  <p className="mt-1.5 text-sm">{preferredSizes || recommendation?.size?.label || 'Not set'}</p>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <p className="text-xs text-ink-soft">Fashion styles</p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {STYLE_OPTIONS.map((option) => {
+                    const active = fashionStyles.includes(option.value)
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() =>
+                          setFashionStyles((current) =>
+                            current.includes(option.value)
+                              ? current.filter((value) => value !== option.value)
+                              : [...current, option.value].slice(0, 8),
+                          )
+                        }
+                        className={`border px-2.5 py-1 text-[0.625rem] uppercase tracking-[0.1em] ${
+                          active ? 'border-ink bg-ink text-paper' : 'border-line text-ink-muted hover:border-ink'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <p className="text-xs text-ink-soft">Preferred colours</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {PALETTE.map((colour) => {
+                    const active = preferredColors.includes(colour)
+                    return (
+                      <button
+                        key={colour}
+                        type="button"
+                        aria-label={`Toggle colour ${colour}`}
+                        aria-pressed={active}
+                        onClick={() =>
+                          setPreferredColors((current) =>
+                            current.includes(colour)
+                              ? current.filter((value) => value !== colour)
+                              : [...current, colour].slice(0, 6),
+                          )
+                        }
+                        className={`size-7 border-2 ${active ? 'border-ink' : 'border-line'}`}
+                        style={{ backgroundColor: colour }}
+                      />
+                    )
+                  })}
+                  <span className="ml-1 text-[0.625rem] text-ink-muted">
+                    {preferredColors.length}/6 selected
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-line pt-4">
               <p className="label-xs mb-3">Circumferences & lengths</p>
               <div className="grid gap-4 sm:grid-cols-3">
                 {measurementFields.map((field) => (
@@ -571,18 +727,32 @@ export function ProfilePage() {
                   Private to your account. Analysis measures pixels, not your body.
                 </p>
               </div>
-              <label className="cursor-pointer border border-line px-3 py-2 text-[0.625rem] uppercase tracking-[0.1em] hover:border-ink">
-                {uploadPhoto.isPending ? 'Uploading…' : 'Upload photo'}
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="sr-only"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    if (file) uploadPhoto.mutate(file)
-                  }}
-                />
-              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={photoView}
+                  onChange={(event) => setPhotoView(event.target.value)}
+                  aria-label="Photo view"
+                  className="border border-line bg-paper px-2 py-2 text-[0.625rem] uppercase tracking-[0.1em]"
+                >
+                  <option value="front">Front</option>
+                  <option value="side">Side</option>
+                  <option value="back">Back</option>
+                  <option value="full_body">Full body</option>
+                  <option value="profile">Profile</option>
+                </select>
+                <label className="cursor-pointer border border-line px-3 py-2 text-[0.625rem] uppercase tracking-[0.1em] hover:border-ink">
+                  {uploadPhoto.isPending ? 'Uploading…' : 'Upload photo'}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="sr-only"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      if (file) uploadPhoto.mutate(file)
+                    }}
+                  />
+                </label>
+              </div>
             </div>
 
             {photos.length === 0 ? (
@@ -596,12 +766,90 @@ export function ProfilePage() {
                   <PhotoCard
                     key={asset.id}
                     asset={asset}
+                    isProfilePhoto={profilePhotoId === asset.id}
                     onAnalyse={() => analysePhoto(asset)}
+                    onSetProfile={() => useAsProfilePhoto.mutate(asset.id)}
                     onDelete={() => deleteMedia.mutate(asset.id)}
                   />
                 ))}
               </div>
             )}
+          </section>
+
+          <section className="border border-line bg-paper p-5">
+            <h2 className="font-display text-xl">Privacy & consent</h2>
+            <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+              Sharing is off by default. These switches are stored with your profile and can be
+              changed at any time.
+            </p>
+
+            <div className="mt-2 border-t border-line">
+              <Toggle
+                checked={shareMeasurements}
+                onChange={setShareMeasurements}
+                label="Include measurements in production requests"
+                description="Attach your measurement snapshot to technical packs you send to ateliers. Off means only the garment spec is shared."
+              />
+              <Toggle
+                checked={allowPhotoAnalysis}
+                onChange={setAllowPhotoAnalysis}
+                label="Allow photo framing analysis"
+                description="Computes sharpness and framing from your uploads on our server. Never estimates weight, age or body measurements."
+              />
+            </div>
+
+            <div className="border-t border-line pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm">Reference-photo consent</p>
+                  <p className="text-xs text-ink-muted">
+                    {profileQuery.data?.photo_consent_at
+                      ? `Recorded ${formatDate(profileQuery.data.photo_consent_at)} · version ${profileQuery.data.photo_consent_version ?? '—'}`
+                      : 'Not recorded — photos cannot be attached to an avatar.'}
+                  </p>
+                </div>
+                {profileQuery.data?.photo_consent_at ? (
+                  <Button size="sm" variant="ghost" onClick={() => setConsent.mutate(false)} loading={setConsent.isPending}>
+                    Revoke consent
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="secondary" onClick={() => setConsent.mutate(true)} loading={setConsent.isPending}>
+                    Give consent
+                  </Button>
+                )}
+              </div>
+              <p className="mt-2 text-[0.625rem] leading-relaxed text-ink-muted">
+                Photos stay private and are never used to infer body measurements. Revoking consent
+                blocks new attachments; existing uploads remain until you delete them.
+              </p>
+            </div>
+
+            <div className="mt-4 border-t border-line pt-3">
+              <p className="label-xs">Profile photo</p>
+              <div className="mt-2 flex items-center gap-3">
+                {profilePhotoId && photos.some((photo) => photo.id === profilePhotoId) ? (
+                  <div className="size-14 overflow-hidden border border-line">
+                    <ProfilePhotoThumb assetId={profilePhotoId} />
+                  </div>
+                ) : (
+                  <div className="flex size-14 items-center justify-center border border-dashed border-line text-[0.5rem] uppercase tracking-[0.1em] text-ink-muted">
+                    None
+                  </div>
+                )}
+                <div className="text-xs text-ink-muted">
+                  <p>Pick a photo from your library below, or clear it.</p>
+                  {profilePhotoId && (
+                    <button
+                      type="button"
+                      onClick={() => useAsProfilePhoto.mutate(null)}
+                      className="mt-1 border-b border-line text-[0.625rem] uppercase tracking-[0.1em] hover:border-ink"
+                    >
+                      Clear profile photo
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </section>
 
           <section className="border border-line bg-paper p-5">
@@ -835,11 +1083,15 @@ export function ProfilePage() {
 
 function PhotoCard({
   asset,
+  isProfilePhoto,
   onAnalyse,
+  onSetProfile,
   onDelete,
 }: {
   asset: MediaAsset
+  isProfilePhoto: boolean
   onAnalyse: () => void
+  onSetProfile: () => void
   onDelete: () => void
 }) {
   const { url } = useMediaUrl(asset.thumbnail_url ?? `/api/v1/media/${asset.id}/content?thumbnail=true`)
@@ -853,10 +1105,20 @@ function PhotoCard({
         )}
       </div>
       <div className="space-y-2 border-t border-line bg-paper p-2">
-        <p className="truncate text-[0.625rem] text-ink-muted">{asset.original_filename}</p>
-        <div className="flex items-center justify-between">
+        <p className="truncate text-[0.5625rem] uppercase tracking-[0.1em] text-ink-muted">
+          {photoViewLabel(asset.photo_view)}
+          {isProfilePhoto ? ' · profile' : ''}
+        </p>
+        <div className="flex flex-wrap items-center justify-between gap-1">
           <button type="button" onClick={onAnalyse} className="text-[0.5625rem] uppercase tracking-[0.1em] hover:text-clay">
             Analyse
+          </button>
+          <button
+            type="button"
+            onClick={onSetProfile}
+            className="text-[0.5625rem] uppercase tracking-[0.1em] text-ink-muted hover:text-ink"
+          >
+            Use as profile
           </button>
           <button type="button" onClick={onDelete} className="text-[0.5625rem] uppercase tracking-[0.1em] text-ink-muted hover:text-danger">
             Delete
@@ -864,5 +1126,14 @@ function PhotoCard({
         </div>
       </div>
     </div>
+  )
+}
+
+function ProfilePhotoThumb({ assetId }: { assetId: string }) {
+  const { url } = useMediaUrl(`/api/v1/media/${assetId}/content?thumbnail=true`)
+  return url ? (
+    <img src={url} alt="Profile" className="size-full object-cover" />
+  ) : (
+    <div className="skeleton size-full" />
   )
 }

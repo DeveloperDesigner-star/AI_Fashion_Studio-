@@ -63,6 +63,8 @@ export interface SizeRecommendation {
   reason?: string | null
 }
 
+export type PreferredFit = 'slim' | 'regular' | 'loose'
+
 export interface Profile {
   id: string
   user_id: string
@@ -81,9 +83,36 @@ export interface Profile {
   city: string | null
   country: string | null
   preferred_sizes: string | null
+  preferred_fit: PreferredFit
+  fashion_styles: string[]
+  preferred_colors: string[]
+  profile_photo_id: string | null
+  share_measurements: boolean
+  allow_photo_analysis: boolean
+  photo_consent_at: string | null
+  photo_consent_version: string | null
   measurements: Measurement | null
   size_recommendation: SizeRecommendation | null
   updated_at: string
+}
+
+export interface AvatarAdjustments {
+  height: number
+  build: number
+  shoulder: number
+  torso: number
+  leg: number
+}
+
+export interface AvatarBaseModel {
+  id: string
+  label: string
+  presentation: 'feminine' | 'masculine' | 'neutral'
+  build: string
+  description: string
+  asset_url: string
+  default_height_cm: number
+  highlights: string[]
 }
 
 export interface AvatarParameters {
@@ -119,6 +148,11 @@ export interface Avatar {
   skin_tone: string
   hair_color: string
   hair_style: string
+  base_model: string
+  adjustments: AvatarAdjustments
+  source: 'measurements' | 'regenerated' | 'manual'
+  version: number
+  photo_asset_ids: string[]
   parameters: AvatarParameters
   measurements_snapshot: Record<string, number | null>
   is_primary: boolean
@@ -237,6 +271,7 @@ export interface OutfitComparison {
 export interface MediaAsset {
   id: string
   kind: string
+  photo_view: string | null
   original_filename: string
   mime_type: string
   byte_size: number

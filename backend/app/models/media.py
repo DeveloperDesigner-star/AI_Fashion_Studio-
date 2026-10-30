@@ -18,6 +18,8 @@ class MediaAsset(UUIDPrimaryKeyMixin, Base):
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     kind: Mapped[str] = mapped_column(String(30), index=True, nullable=False)
+    # Optional position for reference photos (front / side / back / full_body).
+    photo_view: Mapped[str | None] = mapped_column(String(20), index=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     # Storage keys are generated server-side (never user controlled).
     storage_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)

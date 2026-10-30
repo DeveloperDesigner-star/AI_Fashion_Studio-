@@ -54,6 +54,24 @@ class GarmentSlot(StrEnum):
     ACCESSORY = "accessory"
 
 
+class PreferredFit(StrEnum):
+    """How the user likes clothes to sit — a preference, not a body fact."""
+
+    SLIM = "slim"
+    REGULAR = "regular"
+    LOOSE = "loose"
+
+
+class PhotoView(StrEnum):
+    """Reference-photo positions accepted for the avatar workflow."""
+
+    FRONT = "front"
+    SIDE = "side"
+    BACK = "back"
+    FULL_BODY = "full_body"
+    PROFILE = "profile"
+
+
 class MediaKind(StrEnum):
     PHOTO = "photo"
     REFERENCE = "reference"
