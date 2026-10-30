@@ -15,6 +15,7 @@ from app.api.v1.endpoints import (
     notifications,
     outfits,
     profile,
+    try_on,
 )
 
 api_router = APIRouter()
@@ -25,6 +26,7 @@ api_router.include_router(avatars.router)
 api_router.include_router(catalog.router)
 api_router.include_router(designs.router)
 api_router.include_router(outfits.router)
+api_router.include_router(try_on.router)
 api_router.include_router(media.router)
 api_router.include_router(ai.router)
 api_router.include_router(marketplace.router)

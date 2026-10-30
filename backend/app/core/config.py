@@ -55,6 +55,20 @@ class Settings(BaseSettings):
     max_image_pixels: int = 24_000_000
     upload_retention_days: int = 90
 
+    # ---- Virtual try-on ----
+    # CatVTON inference is GPU-only. The main API stays lightweight and talks to
+    # a self-hosted worker; unset means the feature is explicitly unavailable.
+    tryon_remote_url: str = ""
+    tryon_remote_token: str = ""
+    tryon_request_timeout: float = 240.0
+    tryon_health_timeout: float = 4.0
+    tryon_max_result_mb: int = 20
+    tryon_rate_limit_per_minute: int = 4
+    # Attribution shown in the UI and saved with every result.
+    tryon_license_url: str = "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+    tryon_model_repo: str = "https://github.com/Zheng-Chong/CatVTON"
+    tryon_model_name: str = "CatVTON"
+
     # ---- AI providers ----
     gemini_api_key: str = ""
     gemini_text_model: str = "gemini-2.5-flash"

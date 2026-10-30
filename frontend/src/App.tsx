@@ -16,6 +16,7 @@ import { StudioPage } from '@/pages/StudioPage'
 import { GarmentPage } from '@/pages/GarmentPage'
 import { DesignEditorPage } from '@/pages/DesignEditorPage'
 import { FittingRoomPage } from '@/pages/FittingRoomPage'
+import { TryOnPage } from '@/pages/TryOnPage'
 import { OutfitsPage } from '@/pages/OutfitsPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { AssistantPage } from '@/pages/AssistantPage'
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="settings" element={protectedPage(<SettingsPage />)} />
         <Route path="onboarding" element={protectedPage(<OnboardingPage />)} />
         <Route path="fitting-room" element={protectedPage(<FittingRoomPage />)} />
+        <Route path="try-on" element={protectedPage(<TryOnPage />)} />
         <Route path="outfits" element={protectedPage(<OutfitsPage />)} />
         <Route path="profile" element={protectedPage(<ProfilePage />)} />
         <Route path="assistant" element={protectedPage(<AssistantPage />)} />

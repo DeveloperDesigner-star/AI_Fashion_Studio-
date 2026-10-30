@@ -16,6 +16,8 @@ interface GarmentArtProps {
   components?: Record<string, ComponentCustomisation>
   className?: string
   showShadow?: boolean
+  /** Try-on colour choice; overrides the primary body colour only. */
+  colorOverride?: string | null
 }
 
 function pick(
@@ -55,8 +57,14 @@ interface Palette {
   highlight: string
 }
 
-export function GarmentArt({ garment, components, className, showShadow = true }: GarmentArtProps) {
-  const primary = pick(garment, components, ['body', 'upper', 'case'])
+export function GarmentArt({
+  garment,
+  components,
+  className,
+  showShadow = true,
+  colorOverride,
+}: GarmentArtProps) {
+  const primary = colorOverride || pick(garment, components, ['body', 'upper', 'case'])
   const secondary = pick(garment, components, ['sleeves', 'legs', 'strap', 'handle', 'dupatta', 'pleats'])
   const accent = pick(garment, components, ['collar', 'lapels', 'neckline', 'dial', 'hardware', 'borders'])
   const palette: Palette = {

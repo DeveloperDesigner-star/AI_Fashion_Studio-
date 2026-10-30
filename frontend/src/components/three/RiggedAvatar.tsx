@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
+import { fabricFinish, shoeAttachment, shoeDetails } from '@/lib/tryOn'
 import {
   PIECE_MESHES,
   RIGGED_MODELS,
@@ -37,6 +38,70 @@ interface MeshRecord {
   mesh: THREE.Mesh
   material: THREE.MeshStandardMaterial
   role: MaterialRole | null
+}
+
+function shoeMesh(colour: string, style: string, side: 'L' | 'R'): THREE.Group {
+  const spec = shoeAttachment(side)
+  const details = shoeDetails(style)
+  const group = new THREE.Group()
+  group.name = `rig_attached_shoe_${side.toLowerCase()}`
+  group.position.set(...spec.position)
+
+  const upperMaterial = new THREE.MeshStandardMaterial({
+    color: colour,
+    roughness: style === 'sandal' ? 0.8 : 0.52,
+    metalness: 0.02,
+    side: THREE.DoubleSide,
+  })
+  const soleMaterial = new THREE.MeshStandardMaterial({
+    color: details.soleColor,
+    roughness: 0.92,
+    metalness: 0,
+  })
+
+  const sole = new THREE.Mesh(new THREE.BoxGeometry(...spec.soleSize), soleMaterial)
+  sole.position.set(0, -0.04, 0.02)
+  group.add(sole)
+
+  const upper = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), upperMaterial)
+  upper.scale.set(spec.upperSize[0] / 2, spec.upperSize[1] / 2, spec.upperSize[2] / 2)
+  upper.position.set(0, -0.004, 0.018)
+  group.add(upper)
+
+  if (details.heel) {
+    const heel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.065), soleMaterial)
+    heel.position.set(0, -0.045, -0.078)
+    group.add(heel)
+  }
+  if (details.bootShaft) {
+    const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.104, 0.18, 0.116), upperMaterial)
+    shaft.position.set(0, 0.085, -0.035)
+    group.add(shaft)
+  }
+  if (details.straps) {
+    for (const z of [-0.02, 0.055]) {
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.142, 0.014, 0.028), upperMaterial)
+      strap.position.set(0, 0.042, z)
+      group.add(strap)
+    }
+  }
+  if (style === 'sneaker') {
+    const toe = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), soleMaterial)
+    toe.scale.set(0.064, 0.022, 0.045)
+    toe.position.set(0, 0.005, 0.115)
+    group.add(toe)
+  }
+  return group
+}
+
+function disposeGroup(group: THREE.Group): void {
+  group.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return
+    object.geometry.dispose()
+    const material = object.material
+    if (Array.isArray(material)) material.forEach((item) => item.dispose())
+    else material.dispose()
+  })
 }
 
 const LEG_LIFT = 0.84
@@ -146,6 +211,32 @@ export function RiggedAvatar({
     }
   }, [bones, model, proportions, restPositions])
 
+  // Catalogue footwear is a separate authored mesh, parented to the exact foot
+  // bones. It therefore follows the walk/idle clips instead of floating in
+  // world space. The built-in sample shoe is hidden while it is worn.
+  const attachedShoes = useMemo(() => {
+    if (!look.externalFootwear) return null
+    const colour = look.colors.footwear ?? ROLE_DEFAULT_COLORS.footwear
+    return {
+      L: shoeMesh(colour, look.shoeStyle, 'L'),
+      R: shoeMesh(colour, look.shoeStyle, 'R'),
+    }
+  }, [look.colors.footwear, look.externalFootwear, look.shoeStyle])
+
+  useEffect(() => {
+    if (!attachedShoes) return
+    const left = bones.get('foot_L')
+    const right = bones.get('foot_R')
+    if (left) left.add(attachedShoes.L)
+    if (right) right.add(attachedShoes.R)
+    return () => {
+      if (left) left.remove(attachedShoes.L)
+      if (right) right.remove(attachedShoes.R)
+      disposeGroup(attachedShoes.L)
+      disposeGroup(attachedShoes.R)
+    }
+  }, [attachedShoes, bones])
+
   // Visibility + colours. Unselected sample pieces stay hidden rather than
   // being tinted and left on the mannequin.
   useEffect(() => {
@@ -160,6 +251,8 @@ export function RiggedAvatar({
       } else {
         const piece = pieceForMesh(name)
         visible = piece ? look.pieceIds.includes(piece) : true
+        // The authored sample shoe is replaced by the rig-attached shoe mesh.
+        if (name.startsWith('footwear_') && look.externalFootwear) visible = false
       }
       record.mesh.visible = visible
       if (!record.role) continue
@@ -170,6 +263,11 @@ export function RiggedAvatar({
             ? hairColor
             : (look.colors[record.role] ?? ROLE_DEFAULT_COLORS[record.role])
       record.material.color.set(colour)
+      if (record.role !== 'skin' && record.role !== 'hair') {
+        const finish = fabricFinish(look.fabrics[record.role] ?? 'cotton')
+        record.material.roughness = finish.roughness
+        record.material.metalness = finish.metalness
+      }
     }
   }, [hairColor, hairStyle, look, records, skinTone])
 

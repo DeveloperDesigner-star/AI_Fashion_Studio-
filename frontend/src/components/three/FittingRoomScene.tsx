@@ -47,6 +47,24 @@ interface FittingRoomSceneProps {
   onReady: () => void
   quality: RenderQuality
   frameloop: 'always' | 'never'
+  captureEnabled?: boolean
+  onCaptureReady?: (capture: (() => string | null) | null) => void
+}
+
+function CaptureBridge({ onReady }: { onReady?: (capture: (() => string | null) | null) => void }) {
+  const gl = useThree((state) => state.gl)
+  useEffect(() => {
+    if (!onReady) return
+    onReady(() => {
+      try {
+        return gl.domElement.toDataURL('image/png')
+      } catch {
+        return null
+      }
+    })
+    return () => onReady(null)
+  }, [gl, onReady])
+  return null
 }
 
 const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
@@ -175,6 +193,8 @@ export function FittingRoomScene({
   onReady,
   quality,
   frameloop,
+  captureEnabled = false,
+  onCaptureReady,
 }: FittingRoomSceneProps) {
   return (
     <Canvas
@@ -186,6 +206,8 @@ export function FittingRoomScene({
         antialias: quality.antialias,
         alpha: false,
         powerPreference: 'high-performance',
+        // Only enabled for the try-on page, which saves a user-requested snapshot.
+        preserveDrawingBuffer: captureEnabled,
       }}
       onCreated={({ gl }) => {
         gl.setClearColor('#ece4d7')
@@ -246,6 +268,7 @@ export function FittingRoomScene({
         cameraCommand={cameraCommand}
         onInteracted={onInteracted}
       />
+      <CaptureBridge onReady={onCaptureReady} />
     </Canvas>
   )
 }

@@ -734,3 +734,130 @@ export interface AdminList<T> {
   items: T[]
   total: number
 }
+
+// --------------------------------------------------------------------------- //
+// Virtual try-on
+// --------------------------------------------------------------------------- //
+export interface TryOnCheck {
+  id: string
+  label: string
+  ok: boolean
+  detail: string
+}
+
+export interface TryOnModel {
+  name: string
+  license: string
+  license_url: string
+  repository: string
+  paper: string
+  attribution: string
+  requirements: string[]
+  limitations: string[]
+  commercial_use: boolean
+}
+
+export interface TryOnCapabilities {
+  available: boolean
+  status: 'ready' | 'unavailable' | string
+  provider: string
+  reason: string
+  checks: TryOnCheck[]
+  model: TryOnModel
+  worker: {
+    model?: string | null
+    revision?: string | null
+    gpu?: { name?: string | null; vram_gb?: number | null }
+    latency_ms?: number | null
+    url?: string
+    license_url?: string
+  }
+  disclaimer: string
+  supported_slots: string[]
+  environment: {
+    api_runs_inference: boolean
+    requires_self_hosted_worker: boolean
+    worker_configured: boolean
+    worker_url_exposed: boolean
+  }
+}
+
+export interface TryOnItem {
+  id: string
+  garment_id: string | null
+  design_id: string | null
+  garment_name: string
+  garment_slug: string
+  design_name: string | null
+  slot: string
+  size: string | null
+  fabric: string
+  color: string
+  sort_order: number
+}
+
+export interface TryOnComparison {
+  available: boolean
+  original_url: string | null
+  customised_url: string | null
+  original_label: string
+  customised_label: string
+  note: string
+  approximate: boolean
+}
+
+export interface TryOnSession {
+  id: string
+  name: string
+  mode: 'photo' | 'avatar'
+  status: 'draft' | 'ready' | 'unavailable' | 'failed' | string
+  avatar_id: string | null
+  photo_asset_id: string | null
+  garment_asset_id: string | null
+  result_asset_id: string | null
+  preview_asset_id: string | null
+  provider: string | null
+  model_name: string | null
+  model_license: string | null
+  model_license_url: string | null
+  model_revision: string | null
+  inference_ms: number | null
+  generated_at: string | null
+  error: string | null
+  approximate: boolean
+  consent_version: string | null
+  consented_at: string | null
+  training_opt_in: boolean
+  metadata: Record<string, unknown>
+  items: TryOnItem[]
+  original_url: string | null
+  result_url: string | null
+  preview_url: string | null
+  result_thumbnail_url: string | null
+  preview_thumbnail_url: string | null
+  comparison: TryOnComparison
+  disclaimer: string
+  created_at: string
+  updated_at: string
+}
+
+export interface TryOnList {
+  items: TryOnSession[]
+  total: number
+}
+
+export interface TryOnSessionCreate {
+  name?: string
+  mode: 'photo' | 'avatar'
+  photo_asset_id?: string | null
+  avatar_id?: string | null
+  items: {
+    garment_id: string
+    design_id?: string | null
+    size?: string | null
+    fabric?: string | null
+    color?: string | null
+  }[]
+  photo_processing_consent?: boolean
+  training_opt_in?: boolean
+}

@@ -9,6 +9,10 @@ export interface FittingItem {
   designId: string | null
   designName: string | null
   components: Record<string, ComponentCustomisation>
+  /** A try-on colour override on top of the saved design (kept out of the design). */
+  colorOverride?: string | null
+  /** Chosen fabric for the try-on; appearance only, never a physical claim. */
+  fabricOverride?: string | null
 }
 
 interface StudioState {

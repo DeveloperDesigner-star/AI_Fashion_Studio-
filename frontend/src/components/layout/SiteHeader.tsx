@@ -12,6 +12,7 @@ const primaryNav = [
   { to: '/studio/men', label: 'Men' },
   { to: '/studio/accessories', label: 'Accessories' },
   { to: '/fitting-room', label: 'Fitting room' },
+  { to: '/try-on', label: 'Try-on' },
   { to: '/designs', label: 'Designs' },
   { to: '/marketplace', label: 'Ateliers' },
 ]
@@ -55,7 +56,7 @@ export function SiteHeader() {
           <span className="hidden text-[0.625rem] uppercase tracking-[0.28em] text-ink-muted sm:inline">Studio</span>
         </Link>
 
-        <nav className="hidden items-center gap-6 lg:flex" aria-label="Main">
+        <nav className="hidden items-center gap-4 lg:flex xl:gap-6" aria-label="Main">
           {primaryNav.map((item) => (
             <NavLink
               key={item.to}
@@ -123,6 +124,7 @@ export function SiteHeader() {
                       { to: '/dashboard', label: 'Dashboard' },
                       { to: '/designs', label: 'Saved designs' },
                       { to: '/avatar', label: 'Avatar studio' },
+                      { to: '/try-on', label: 'Virtual try-on' },
                       { to: '/favorites', label: 'Saved pieces' },
                       { to: '/profile', label: 'Profile & measurements' },
                       { to: '/outfits', label: 'Saved outfits' },

@@ -7,7 +7,7 @@
  * system: a catalogue T-shirt does not become a fitted 3D T-shirt. The UI must
  * always describe the result as a fitted sample silhouette.
  */
-import type { Avatar, AvatarAdjustments, AvatarParameters } from '@/lib/types'
+import type { Avatar, AvatarAdjustments, AvatarParameters, Garment } from '@/lib/types'
 import type { FittingItem } from '@/stores/studioStore'
 import { measurementMultipliers } from '@/lib/avatarStudio'
 
@@ -242,8 +242,12 @@ export interface FittingLook {
   pieces: LookPiece[]
   pieceIds: PieceId[]
   colors: Partial<Record<MaterialRole, string>>
+  fabrics: Partial<Record<MaterialRole, string>>
   bodyHidden: string[]
   unsupported: UnsupportedPiece[]
+  /** Footwear is a separate mesh parented to the foot bones. */
+  externalFootwear: boolean
+  shoeStyle: string
   /** Every visible piece is an authored silhouette, never an auto-fit claim. */
   fidelity: 'sample'
 }
@@ -315,6 +319,8 @@ export function roleColor(item: FittingItem, role: MaterialRole): string {
     ROLE_DEFAULT_COLORS[role],
   )
   if (role === 'skin' || role === 'hair') return fallback
+  const override = normaliseHexColor(item.colorOverride, '')
+  if (override) return override
   const entries = componentEntries(item)
   const ids = ROLE_COMPONENT_IDS[role]
   const kinds = ROLE_COMPONENT_KINDS[role]
@@ -334,6 +340,22 @@ export function roleColor(item: FittingItem, role: MaterialRole): string {
     return normaliseHexColor(anyCustomised.customisation.color, fallback)
   }
   return fallback
+}
+
+/** Fabric selected for a role. Used only for illustrative material appearance. */
+export function roleFabric(item: FittingItem, role: MaterialRole): string {
+  if (role === 'skin' || role === 'hair') return role
+  if (item.fabricOverride) return item.fabricOverride
+  const entries = componentEntries(item)
+  for (const id of ROLE_COMPONENT_IDS[role]) {
+    const entry = entries.find((candidate) => candidate.definition.id === id)
+    if (entry?.customisation?.fabric) return entry.customisation.fabric
+  }
+  for (const kind of ROLE_COMPONENT_KINDS[role]) {
+    const entry = entries.find((candidate) => candidate.definition.kind === kind)
+    if (entry?.customisation?.fabric) return entry.customisation.fabric
+  }
+  return item.garment.default_fabric ?? 'cotton'
 }
 
 /** Whether the authored sample wardrobe can stand in for this catalogue item. */
@@ -367,8 +389,11 @@ function unsupportedReason(item: Pick<FittingItem, 'slot'>): string {
 export function lookFromItems(items: FittingItem[]): FittingLook {
   const pieces: LookPiece[] = []
   const colors: Partial<Record<MaterialRole, string>> = {}
+  const fabrics: Partial<Record<MaterialRole, string>> = {}
   const bodyHidden = new Set<string>()
   const unsupported: UnsupportedPiece[] = []
+  let externalFootwear = false
+  let shoeStyle = 'classic'
 
   for (const item of items) {
     if (!isSampleSupported(item)) {
@@ -402,8 +427,16 @@ export function lookFromItems(items: FittingItem[]): FittingLook {
     const color = roleColor(item, primaryRole)
     const accent = pieceId === 'top' ? roleColor(item, 'sleeves') : color
     colors[primaryRole] = color
-    if (pieceId === 'top') colors.sleeves = accent
+    fabrics[primaryRole] = roleFabric(item, primaryRole)
+    if (pieceId === 'top') {
+      colors.sleeves = accent
+      fabrics.sleeves = roleFabric(item, 'sleeves')
+    }
     if (pieceId === 'dupatta') colors.dupatta = color
+    if (pieceId === 'footwear') {
+      externalFootwear = true
+      shoeStyle = shoeStyleFor(item.garment)
+    }
 
     for (const mesh of BODY_HIDDEN_BY_PIECE[pieceId] ?? []) bodyHidden.add(mesh)
     pieces.push({
@@ -421,8 +454,11 @@ export function lookFromItems(items: FittingItem[]): FittingLook {
     pieces,
     pieceIds: pieces.map((piece) => piece.id),
     colors,
+    fabrics,
     bodyHidden: [...bodyHidden],
     unsupported,
+    externalFootwear,
+    shoeStyle,
     fidelity: 'sample',
   }
 }
@@ -491,6 +527,16 @@ export function renderQuality(isMobile: boolean): RenderQuality {
 
 export function isMobileViewport(width: number): boolean {
   return width < 768
+}
+
+/** Shapes for the rig-attached footwear meshes (all authored in this project). */
+export function shoeStyleFor(garment: Pick<Garment, 'category' | 'name'>): string {
+  const descriptor = `${garment.category ?? ''} ${garment.name ?? ''}`.toLowerCase()
+  if (/heel|pump|stiletto/.test(descriptor)) return 'heel'
+  if (/boot/.test(descriptor)) return 'boot'
+  if (/sandal|slide|chappal|khussa/.test(descriptor)) return 'sandal'
+  if (/sneaker|sport|trainer/.test(descriptor)) return 'sneaker'
+  return 'classic'
 }
 
 export function lookSummary(look: FittingLook): string {

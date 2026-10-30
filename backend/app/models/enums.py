@@ -137,6 +137,7 @@ class MediaKind(StrEnum):
     PRINT = "print"
     AVATAR = "avatar"
     EXPORT = "export"
+    TRY_ON = "try_on"
 
 
 class DesignStatus(StrEnum):
@@ -347,3 +348,17 @@ EMBROIDERIES: tuple[str, ...] = (
     "applique",
     "gold_work",
 )
+
+
+class TryOnMode(StrEnum):
+    """Where the virtual try-on preview comes from."""
+
+    PHOTO = "photo"
+    AVATAR = "avatar"
+
+
+class TryOnStatus(StrEnum):
+    DRAFT = "draft"
+    READY = "ready"
+    UNAVAILABLE = "unavailable"
+    FAILED = "failed"

@@ -4,10 +4,12 @@ A production-shaped web platform for AI-assisted fashion design: parametric avat
 component-level garment editor, a WebGL fitting room, print preparation, and a quoting
 marketplace between clients and workshops.
 
-**Status: Phases 1–6 complete and verified.** Backend (FastAPI + PostgreSQL/SQLite) and frontend
-(React + TypeScript + Vite + Tailwind + React Three Fiber) run together; every screen in the route
-table is implemented against a real API. AI features degrade explicitly when no provider key is
-configured — they never fabricate model output.
+**Status: Phases 1–7 implemented; the local lint/test/build gate is green.** Backend (FastAPI +
+PostgreSQL/SQLite) and frontend (React + TypeScript + Vite + Tailwind + React Three Fiber) run
+together; every screen in the route table is implemented against a real API. AI features degrade
+explicitly when no provider key is configured — they never fabricate model output. The CatVTON GPU
+worker is implemented but could not be executed in this sandbox (no CUDA); without a configured
+worker, the try-on page reports an explicit unavailable state and saves no placeholder image.
 
 ---
 
@@ -29,7 +31,7 @@ configured — they never fabricate model output.
 | L | AI fashion assistant | Provider-backed chat when configured, deterministic rule-based stylist otherwise, with daily quota |
 | M | AI design analysis | Vision analysis of an uploaded design or photo; returns `mode: "unavailable"` when no key exists |
 | N | Image processing | Pillow/OpenCV uploads: EXIF normalisation, resize, thumbnails, palette extraction, framing checks, GrabCut background removal and baked crops as transparent PNGs |
-| O | Virtual try-on | Try-on endpoint renders the design onto the current avatar parameters (procedural, not photoreal) |
+| O | Virtual try-on | `/try-on`: private full-body photo or saved avatar; catalogue garment + saved design + size/fabric/colour; approximate CatVTON preview via a self-hosted GPU worker, with an explicit unavailable state when no worker is configured; saved results and original-vs-customised comparison. Catalogue footwear is a separate 3D mesh parented to `foot_L`/`foot_R`; accessories use rigged meshes. Photo consent is per-session, results are private, and no training path exists |
 | P | Outfit saving & comparison | Save/lookup outfits, favourite, compare 2–3 outfits slot-by-slot with price totals |
 | Q | Print preparation | Print sheet generation with bleed/DPI metadata, PNG download; designs flatten only when a proof is exported |
 | R | Print marketplace | Studio directory, quote requests, quote accept/decline, per-request threads |
@@ -61,6 +63,13 @@ configured — they never fabricate model output.
   into a 3D gown, and there is no cloth simulation or arbitrary garment fitting; unsupported pieces
   are labelled “2D only” and remain in the flat preview and technical pack. The mannequin is generated
   from typed measurements, never reconstructed from a photo.
+- **AI try-on is honest.** CatVTON needs a CUDA GPU (>= 8 GB VRAM at 1024×768, bf16)
+  and its code/checkpoints are CC BY-NC-SA 4.0, so it runs only on a self-hosted,
+  non-commercial worker. Without `TRYON_REMOTE_URL` the API reports an explicit
+  unavailable state and stores no placeholder result. The AI preview covers the
+  main upper/lower/full-body garment; footwear, bags, watches, headwear and
+  dupatta are 3D previews only. Every result is labelled approximate — not a fit
+  guarantee and not a simulation of physical fabric. See `docs/TRY_ON.md`.
 - **AI without keys is honest.** With no `GEMINI_API_KEY`/`GROQ_API_KEY`, assistant replies come from
   the offline rule engine and are labelled "Rule-based"; vision analysis returns an explicit
   unavailable response.
@@ -100,10 +109,12 @@ backend/
     db/                 session, seed catalogue
     models/             SQLAlchemy models + enums
     schemas/            Pydantic request/response contracts
-    services/           imaging, sizing, ai registry/providers, print, export, audit
+    services/           imaging, sizing, ai registry/providers, try-on client, print, export, audit
   alembic/              migrations
-  tests/                161 Pytest tests
+  tests/                backend Pytest suite (incl. try-on worker contract)
   scripts/              init_db, create_admin, docker-entrypoint
+services/
+  tryon-worker/         standalone CatVTON GPU worker (not run in the API container)
 frontend/
   src/
     pages/              one file per route
@@ -175,6 +186,8 @@ All backend secrets live in `.env` (never committed). Key variables:
 | `AI_PROVIDER_ORDER` | Default chain (`gemini,groq,openai`); admins can persist another order |
 | `AI_MAX_PROVIDER_ATTEMPTS`, `AI_PROVIDER_RETRIES`, `AI_REQUEST_TIMEOUT` | Hard retry/fallback and timeout ceilings |
 | `AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT` | Per-user fair-use quotas |
+| `TRYON_REMOTE_URL`, `TRYON_REMOTE_TOKEN` | Self-hosted CatVTON worker; empty means the AI try-on feature is explicitly unavailable |
+| `TRYON_REQUEST_TIMEOUT`, `TRYON_RATE_LIMIT_PER_MINUTE` | Try-on timeout and per-IP generation limit |
 | `RATE_LIMIT_*` | Per-IP request limits |
 
 Frontend build-time values live in `frontend/.env.example` (`VITE_API_BASE_URL=/api/v1`).

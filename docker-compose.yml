@@ -44,12 +44,39 @@ services:
       AI_MAX_PROVIDER_ATTEMPTS: ${AI_MAX_PROVIDER_ATTEMPTS:-3}
       AI_PROVIDER_RETRIES: ${AI_PROVIDER_RETRIES:-0}
       AI_REQUEST_TIMEOUT: ${AI_REQUEST_TIMEOUT:-45}
+      TRYON_REMOTE_URL: ${TRYON_REMOTE_URL:-}
+      TRYON_REMOTE_TOKEN: ${TRYON_REMOTE_TOKEN:-}
       MEDIA_ROOT: /data/uploads
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     ports:
       - "8000:8000"
     volumes:
       - media:/data/uploads
+
+  tryon-worker:
+    build:
+      context: ./services/tryon-worker
+    container_name: afs-tryon-worker
+    restart: unless-stopped
+    profiles: ["tryon"]
+    environment:
+      TRYON_WORKER_TOKEN: ${TRYON_WORKER_TOKEN:?set TRYON_WORKER_TOKEN for the try-on worker}
+      CATVTON_VERSION: ${CATVTON_VERSION:-mix}
+      CATVTON_PRECISION: ${CATVTON_PRECISION:-bf16}
+      CATVTON_MODELS_DIR: ${CATVTON_MODELS_DIR:-}
+    ports:
+      - "8080:8080"
+    # Compose (non-Swarm) needs this to pass the NVIDIA device through.
+    gpus: all
+    volumes:
+      - tryon-models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   web:
     build:
@@ -67,3 +94,4 @@ services:
 volumes:
   pgdata:
   media:
+  tryon-models:

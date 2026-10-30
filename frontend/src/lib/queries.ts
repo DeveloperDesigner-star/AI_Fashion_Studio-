@@ -23,6 +23,9 @@ import type {
   OutfitComparison,
   Profile,
   ProviderSetting,
+  TryOnCapabilities,
+  TryOnList,
+  TryOnSession,
   ProviderStatus,
   ProviderTestResult,
   PublicConfig,
@@ -64,6 +67,9 @@ export const qk = {
   aiUsage: ['admin', 'ai-usage'] as const,
   aiErrors: ['admin', 'ai-errors'] as const,
   aiFallbacks: ['admin', 'ai-fallbacks'] as const,
+  tryOnCapabilities: ['try-on', 'capabilities'] as const,
+  tryOnSessions: ['try-on', 'sessions'] as const,
+  tryOnSession: (id: string) => ['try-on', 'session', id] as const,
 }
 
 export const fetchers = {
@@ -98,6 +104,9 @@ export const fetchers = {
   outfit: (id: string) => api.get<Outfit>(`/outfits/${id}`),
   compare: (ids: string[]) => api.get<OutfitComparison>(`/outfits/compare?ids=${ids.join(',')}`),
   media: () => api.get<MediaList>('/media'),
+  tryOnCapabilities: () => api.get<TryOnCapabilities>('/try-on/capabilities'),
+  tryOnSessions: () => api.get<TryOnList>('/try-on/sessions?limit=40'),
+  tryOnSession: (id: string) => api.get<TryOnSession>(`/try-on/sessions/${id}`),
   capabilities: () => api.get<AICapabilities>('/ai/capabilities'),
   providers: () => api.get<ProviderStatus[]>('/ai/providers'),
   businesses: (params: Record<string, string | undefined> = {}) => {

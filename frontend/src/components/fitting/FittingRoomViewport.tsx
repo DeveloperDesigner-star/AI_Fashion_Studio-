@@ -33,6 +33,8 @@ interface FittingRoomViewportProps {
   hairColor?: string
   hairStyle?: string
   className?: string
+  captureEnabled?: boolean
+  onCaptureReady?: (capture: (() => string | null) | null) => void
 }
 
 function supportsWebGL(): boolean {
@@ -142,6 +144,8 @@ export function FittingRoomViewport({
   hairColor,
   hairStyle,
   className,
+  captureEnabled = false,
+  onCaptureReady,
 }: FittingRoomViewportProps) {
   const shellRef = useRef<HTMLDivElement | null>(null)
   const width = useViewportWidth()
@@ -293,6 +297,8 @@ export function FittingRoomViewport({
               onReady={handleReady}
               quality={quality}
               frameloop={frameloop}
+              captureEnabled={captureEnabled}
+              onCaptureReady={onCaptureReady}
             />
           </SceneBoundary>
         ) : (
