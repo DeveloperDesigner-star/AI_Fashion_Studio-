@@ -35,6 +35,11 @@ configured — they never fabricate model output.
 | R | Print marketplace | Studio directory, quote requests, quote accept/decline, per-request threads |
 | S | Orders & quotations | Outgoing/incoming request lists, status timeline, technical-pack export |
 | T | Admin dashboard | Stats, user/role management, studio verification, request oversight |
+| — | User dashboard | `/dashboard`: readiness checklist, recent designs, saved looks, open requests, storage and notice feed |
+| — | Fashion studio hub | `/studio`: six entries (women, men, accessories, design library, fitting room, stylist) plus catalogue selection |
+| — | Design library | `/designs`: filter by status, search, edit with `?design=` deep link, duplicate, archive, delete, try on |
+| — | Shoes & accessories | `/studio/accessories`: five stacking slots, counts, search and sorting |
+| — | Settings | `/settings`: account name/opt-in, unit and motion preferences, JSON data export, sign-out-everywhere |
 | U | AI provider management | Enable/disable providers, model overrides, reset to env defaults, seven-day usage breakdown |
 | V | Notifications | In-app inbox with read state and deep links |
 | W | Security & privacy | Audit log, private media served through authenticated endpoints, rate limits, security headers |
@@ -181,6 +186,29 @@ Interactive documentation is served at `/docs`.
 
 ---
 
+## Routes
+
+| Path | Access | Purpose |
+|---|---|---|
+| `/` | public | Landing page with the studio proposition |
+| `/login`, `/register` | public | Authentication |
+| `/studio` | public | Fashion studio hub (all entries) |
+| `/studio/women`, `/studio/men` | public | Catalogue with filters and curated look |
+| `/studio/accessories` | public | Shoes, bags, watches, headwear, accessories |
+| `/garment/:slug` | public (save requires auth) | Component editor, try-on, AI analysis |
+| `/marketplace` | public (request requires auth) | Studio directory and quote requests |
+| `/onboarding` | user | Three-step setup with live avatar and sizing |
+| `/dashboard` | user | Personal dashboard |
+| `/designs` | user | Saved design library |
+| `/fitting-room` | user | 3D fitting room |
+| `/outfits` | user | Saved outfits and comparison |
+| `/profile` | user | Measurements, avatars, photos, security |
+| `/settings` | user | Account, display, privacy, sessions |
+| `/assistant` | user | AI stylist |
+| `/orders`, `/orders/:id` | user | Requests, quotes and threads |
+| `/notifications` | user | In-app inbox |
+| `/admin` | admin | Operations dashboard |
+
 ## Testing & quality gates
 
 ```bash
@@ -190,16 +218,24 @@ make check        # ruff + ESLint + tsc + Pytest + Vitest + production build
 Individually:
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest          # 88 tests
+cd backend && ../.venv/bin/python -m pytest          # 91 tests
 cd backend && ../.venv/bin/python -m ruff check app tests
 cd frontend && npm run typecheck && npm run lint
-cd frontend && npx vitest run                        # 12 tests
+cd frontend && npx vitest run                        # 16 tests
 cd frontend && npm run build
 cd frontend && npm run e2e                           # needs `npm run e2e:install` once
 ```
 
-Backend tests run against SQLite with `DATABASE_URL=sqlite://` and cover auth, profiles,
-measurements, catalogue, designs, outfits, media, AI fallbacks, marketplace and admin rules.
+Backend tests run against SQLite with `DATABASE_URL=sqlite://` and cover auth (including
+sign-out-everywhere), profiles, measurement validation, account data export, catalogue, designs,
+outfits, media, AI fallbacks, marketplace and admin rules. Frontend unit tests cover formatters,
+fitting-room slot exclusivity and persisted display preferences.
+
+## Documentation
+
+- [Installation guide](docs/INSTALLATION.md) — clean machine to running instance, Docker, troubleshooting.
+- [Development guide](docs/DEVELOPMENT.md) — conventions, commands, testing, adding endpoints and pages.
+- [Architecture](docs/ARCHITECTURE.md) — layers, data model, auth, AI routing, media pipeline, deployment.
 
 ---
 

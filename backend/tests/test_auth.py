@@ -142,3 +142,21 @@ def test_delete_account_requires_confirmation(client: TestClient, user: dict, au
     )
     assert ok.status_code == 204
     assert client.post("/api/v1/auth/login", json={"email": user["email"], "password": user["password"]}).status_code == 401
+
+
+def test_logout_all_revokes_every_session(client: TestClient) -> None:
+    payload = {
+        "email": "logout-all@example.com",
+        "password": "CorrectHorseBattery1",
+        "full_name": "Logout All",
+        "accept_terms": True,
+    }
+    registered = client.post("/api/v1/auth/register", json=payload)
+    assert registered.status_code == 201
+    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+    assert client.cookies.get("afs_refresh")
+
+    response = client.post("/api/v1/auth/logout-all", headers=headers)
+    assert response.status_code == 204
+    assert client.cookies.get("afs_refresh") in (None, "")
+    assert client.post("/api/v1/auth/refresh").status_code == 401

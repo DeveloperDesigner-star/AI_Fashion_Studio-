@@ -19,3 +19,18 @@ test.describe('public shell', () => {
     await expect(page.getByText(/required/i).first()).toBeVisible()
   })
 })
+
+test('studio hub exposes every entry point', async ({ page }) => {
+  await page.goto('/studio')
+  const nav = page.getByRole('main').or(page.locator('body'))
+  for (const label of [
+    'Womenswear',
+    'Menswear',
+    'Shoes & accessories',
+    'Design studio',
+    'Virtual fitting room',
+    'AI stylist',
+  ]) {
+    await expect(nav.getByText(label, { exact: true }).first()).toBeVisible()
+  }
+})

@@ -7,11 +7,12 @@ import { cn, initials } from '@/lib/format'
 import { Badge } from '@/components/ui/Primitives'
 
 const primaryNav = [
+  { to: '/studio', label: 'Studio', end: true },
   { to: '/studio/women', label: 'Women' },
   { to: '/studio/men', label: 'Men' },
+  { to: '/studio/accessories', label: 'Accessories' },
   { to: '/fitting-room', label: 'Fitting room' },
-  { to: '/outfits', label: 'Outfits' },
-  { to: '/assistant', label: 'Stylist' },
+  { to: '/designs', label: 'Designs' },
   { to: '/marketplace', label: 'Ateliers' },
 ]
 
@@ -59,6 +60,7 @@ export function SiteHeader() {
             <NavLink
               key={item.to}
               to={item.to}
+              end={item.end}
               className={({ isActive }) =>
                 cn(
                   'text-[0.6875rem] uppercase tracking-[0.16em] transition-colors hover:text-clay',
@@ -118,10 +120,12 @@ export function SiteHeader() {
                       </Badge>
                     </div>
                     {[
+                      { to: '/dashboard', label: 'Dashboard' },
+                      { to: '/designs', label: 'Saved designs' },
                       { to: '/profile', label: 'Profile & measurements' },
-                      { to: '/fitting-room', label: 'Fitting room' },
                       { to: '/outfits', label: 'Saved outfits' },
                       { to: '/orders', label: 'Requests & orders' },
+                      { to: '/settings', label: 'Settings' },
                       ...(user.role === 'admin' ? [{ to: '/admin', label: 'Admin dashboard' }] : []),
                     ].map((item) => (
                       <Link
@@ -197,7 +201,20 @@ export function SiteHeader() {
                 {item.label}
               </Link>
             ))}
-            {!user && (
+            {user ? (
+              <div className="mt-1 border-t border-line pt-2">
+                {[
+                  { to: '/dashboard', label: 'Dashboard' },
+                  { to: '/outfits', label: 'Saved outfits' },
+                  { to: '/profile', label: 'Profile & measurements' },
+                  { to: '/settings', label: 'Settings' },
+                ].map((item) => (
+                  <Link key={item.to} to={item.to} className="block py-2 text-sm text-ink-soft hover:text-ink">
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            ) : (
               <Link to="/login" className="py-2.5 text-sm text-ink-soft hover:text-ink">
                 Sign in
               </Link>

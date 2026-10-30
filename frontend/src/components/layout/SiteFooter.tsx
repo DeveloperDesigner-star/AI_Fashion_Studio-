@@ -22,8 +22,10 @@ export function SiteFooter() {
         <div className="space-y-2">
           <p className="label-xs">Studio</p>
           {[
+            { to: '/studio', label: 'Studio overview' },
             { to: '/studio/women', label: 'Womenswear' },
             { to: '/studio/men', label: 'Menswear' },
+            { to: '/studio/accessories', label: 'Shoes & accessories' },
             { to: '/fitting-room', label: 'Fitting room' },
             { to: '/assistant', label: 'AI stylist' },
           ].map((item) => (
@@ -37,9 +39,11 @@ export function SiteFooter() {
           <p className="label-xs">Production</p>
           {[
             { to: '/marketplace', label: 'Ateliers & printers' },
+            { to: '/designs', label: 'Design library' },
             { to: '/outfits', label: 'Outfit library' },
             { to: '/orders', label: 'Requests & quotes' },
             { to: '/profile', label: 'Measurements' },
+            { to: '/settings', label: 'Settings' },
           ].map((item) => (
             <Link key={item.to} to={item.to} className="block text-sm text-ink-soft hover:text-clay">
               {item.label}

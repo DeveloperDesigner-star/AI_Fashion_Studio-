@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '@/lib/api'
 import { fetchers, qk } from '@/lib/queries'
@@ -58,6 +58,9 @@ function defaultComponents(garment: Garment): Record<string, ComponentCustomisat
 
 export function GarmentPage() {
   const { slug = '' } = useParams()
+  const [searchParams] = useSearchParams()
+  const requestedDesignId = searchParams.get('design')
+  const appliedDesignRef = useRef<string | null>(null)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = useAuthStore((state) => state.user)
@@ -92,8 +95,8 @@ export function GarmentPage() {
   })
 
   const designsQuery = useQuery({
-    queryKey: qk.designs,
-    queryFn: fetchers.designs,
+    queryKey: qk.designs({ limit: 100 }),
+    queryFn: () => fetchers.designs({ limit: 100 }),
     enabled: Boolean(user),
   })
 
@@ -167,7 +170,7 @@ export function GarmentPage() {
     },
     onSuccess: (design) => {
       setSavedDesignId(design.id)
-      queryClient.invalidateQueries({ queryKey: qk.designs })
+      queryClient.invalidateQueries({ queryKey: ['designs'] })
       toast.success('Design saved', `${design.name} is now in your library.`)
     },
     onError: (error) => {
@@ -187,6 +190,20 @@ export function GarmentPage() {
       toast.error('Upload failed', error instanceof ApiError ? error.message : 'Check the file and try again.')
     },
   })
+
+  // Deep link from the design library: /garment/<slug>?design=<id>.
+  // The ref keeps the link from re-applying after every save-invalidation.
+  useEffect(() => {
+    if (!requestedDesignId || appliedDesignRef.current === requestedDesignId) return
+    const design = designsForGarment.find((item) => item.id === requestedDesignId)
+    if (!design) return
+    appliedDesignRef.current = requestedDesignId
+    setComponents(design.components)
+    setDesignName(design.name)
+    setNotes(design.notes ?? '')
+    setFit((design.fit?.cut as typeof fit) ?? 'regular')
+    setSavedDesignId(design.id)
+  }, [requestedDesignId, designsForGarment, fit])
 
   const loadDesign = (design: Design) => {
     setComponents(design.components)

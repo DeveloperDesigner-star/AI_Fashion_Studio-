@@ -30,7 +30,7 @@ export function FittingRoomPage() {
     queryKey: qk.garments({ page_size: 60, sort: 'featured' }),
     queryFn: () => fetchers.garments({ page_size: 60, sort: 'featured' }),
   })
-  const designsQuery = useQuery({ queryKey: qk.designs, queryFn: fetchers.designs })
+  const designsQuery = useQuery({ queryKey: qk.designs({ limit: 100 }), queryFn: () => fetchers.designs({ limit: 100 }) })
   const avatarsQuery = useQuery<Avatar[]>({ queryKey: qk.avatars, queryFn: fetchers.avatars })
   const profileQuery = useQuery<Profile>({ queryKey: qk.profile, queryFn: fetchers.profile })
   const outfitsQuery = useQuery({ queryKey: qk.outfits, queryFn: fetchers.outfits })

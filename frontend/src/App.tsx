@@ -1,10 +1,15 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { LandingPage } from '@/pages/LandingPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
+import { DashboardPage } from '@/pages/DashboardPage'
+import { StudioHubPage } from '@/pages/StudioHubPage'
+import { DesignsPage } from '@/pages/DesignsPage'
+import { AccessoriesPage } from '@/pages/AccessoriesPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 import { StudioPage } from '@/pages/StudioPage'
 import { GarmentPage } from '@/pages/GarmentPage'
 import { FittingRoomPage } from '@/pages/FittingRoomPage'
@@ -29,11 +34,15 @@ export default function App() {
         <Route index element={<LandingPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
-        <Route path="studio" element={<Navigate to="/studio/women" replace />} />
+        <Route path="studio" element={<StudioHubPage />} />
+        <Route path="studio/accessories" element={<AccessoriesPage />} />
         <Route path="studio/:gender" element={<StudioPage />} />
         <Route path="garment/:slug" element={<GarmentPage />} />
         <Route path="marketplace" element={<MarketplacePage />} />
 
+        <Route path="dashboard" element={protectedPage(<DashboardPage />)} />
+        <Route path="designs" element={protectedPage(<DesignsPage />)} />
+        <Route path="settings" element={protectedPage(<SettingsPage />)} />
         <Route path="onboarding" element={protectedPage(<OnboardingPage />)} />
         <Route path="fitting-room" element={protectedPage(<FittingRoomPage />)} />
         <Route path="outfits" element={protectedPage(<OutfitsPage />)} />

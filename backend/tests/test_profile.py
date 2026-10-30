@@ -123,3 +123,24 @@ def test_avatars_are_isolated_between_users(client: TestClient, auth: dict[str, 
     avatar = client.post("/api/v1/avatars", headers=auth, json={"name": "Private"}).json()
     response = client.patch(f"/api/v1/avatars/{avatar['id']}", headers=other_auth, json={"name": "Hijack"})
     assert response.status_code == 404
+
+
+def test_profile_export_contains_portable_data(client: TestClient, auth: dict[str, str]) -> None:
+    client.put(
+        "/api/v1/profile/measurements",
+        headers=auth,
+        json={"waist_cm": 71, "bust_cm": 90, "hips_cm": 97},
+    )
+    response = client.get("/api/v1/profile/export", headers=auth)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["format_version"] == 1
+    assert body["account"]["email"]
+    assert body["measurements"]["waist_cm"] == 71
+    for key in ("profile", "avatars", "designs", "outfits", "exported_at", "note"):
+        assert key in body
+    assert isinstance(body["designs"], list)
+
+
+def test_profile_export_requires_authentication(client: TestClient) -> None:
+    assert client.get("/api/v1/profile/export").status_code == 401

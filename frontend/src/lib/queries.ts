@@ -32,7 +32,7 @@ export const qk = {
     ['garments', params] as const,
   garment: (slug: string) => ['garment', slug] as const,
   looks: (gender?: string) => ['looks', gender ?? 'all'] as const,
-  designs: ['designs'] as const,
+  designs: (params: { status?: string; limit?: number } = {}) => ['designs', params] as const,
   design: (id: string) => ['design', id] as const,
   outfits: ['outfits'] as const,
   outfit: (id: string) => ['outfit', id] as const,
@@ -67,7 +67,12 @@ export const fetchers = {
   garment: (slug: string) => api.get<Garment>(`/catalog/garments/${slug}`),
   looks: (gender?: string) =>
     api.get<{ items: Look[] }>(`/catalog/looks${gender ? `?gender=${gender}` : ''}`),
-  designs: () => api.get<{ items: Design[]; total: number }>('/designs'),
+  designs: (params: { status?: string; limit?: number } = {}) => {
+    const search = new URLSearchParams()
+    if (params.status) search.set('status', params.status)
+    if (params.limit) search.set('limit', String(params.limit))
+    return api.get<{ items: Design[]; total: number }>(`/designs?${search.toString()}`)
+  },
   outfits: () => api.get<{ items: Outfit[]; total: number }>('/outfits'),
   outfit: (id: string) => api.get<Outfit>(`/outfits/${id}`),
   compare: (ids: string[]) => api.get<OutfitComparison>(`/outfits/compare?ids=${ids.join(',')}`),

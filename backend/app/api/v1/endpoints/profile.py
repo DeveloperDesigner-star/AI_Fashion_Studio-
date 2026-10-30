@@ -10,9 +10,12 @@ from sqlalchemy import select
 
 from app.api.v1.deps import CurrentUser, DbSession
 from app.models.avatar import Avatar
+from app.models.design import Design
 from app.models.enums import GenderStyle
+from app.models.outfit import Outfit
 from app.models.profile import Measurement, Profile
 from app.schemas.avatar import AvatarRead
+from app.schemas.catalog import DesignRead, OutfitRead
 from app.schemas.profile import (
     MeasurementInput,
     MeasurementRead,
@@ -116,6 +119,47 @@ def size_preview(payload: SizePreviewRequest) -> SizeRecommendationResponse:
             hips_cm=payload.hips_cm,
         )
     )
+
+
+@router.get("/export")
+def export_account_data(user: CurrentUser, db: DbSession) -> dict[str, Any]:
+    """Portable copy of the profile, measurements, avatars, designs and outfits.
+
+    Uploaded images are intentionally excluded: they are binary assets and are
+    downloadable individually through the authenticated media endpoints.
+    """
+    profile = _get_or_create_profile(db, user)
+    avatars = db.scalars(select(Avatar).where(Avatar.user_id == user.id)).all()
+    designs = db.scalars(
+        select(Design).where(Design.user_id == user.id).order_by(Design.updated_at.desc())
+    ).all()
+    outfits = db.scalars(
+        select(Outfit).where(Outfit.user_id == user.id).order_by(Outfit.updated_at.desc())
+    ).all()
+    measurements = profile.measurements
+
+    return {
+        "exported_at": datetime.now(UTC).isoformat(),
+        "format_version": 1,
+        "account": {
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role,
+            "is_verified": user.is_verified,
+            "created_at": user.created_at.isoformat(),
+        },
+        "profile": ProfileRead.model_validate(profile).model_dump(mode="json"),
+        "measurements": MeasurementRead.model_validate(measurements).model_dump(mode="json")
+        if measurements
+        else None,
+        "avatars": [AvatarRead.model_validate(item).model_dump(mode="json") for item in avatars],
+        "designs": [DesignRead.model_validate(item).model_dump(mode="json") for item in designs],
+        "outfits": [OutfitRead.model_validate(item).model_dump(mode="json") for item in outfits],
+        "note": (
+            "Uploaded images are not embedded in this export. Download them from the studio "
+            "media library before deleting your account."
+        ),
+    }
 
 
 @router.get("/size-chart")

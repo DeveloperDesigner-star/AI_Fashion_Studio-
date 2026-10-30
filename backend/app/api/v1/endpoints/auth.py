@@ -219,6 +219,36 @@ def logout(request: Request, response: Response, db: DbSession) -> Response:
     return response
 
 
+@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
+def logout_all(
+    user: CurrentUser, request: Request, response: Response, db: DbSession
+) -> Response:
+    """Revoke every refresh token for the account (all devices).
+
+    The caller's current access token stays valid until it expires, which is at
+    most ACCESS_TOKEN_EXPIRE_MINUTES; the browser client also drops it locally.
+    """
+    now = datetime.now(UTC)
+    revoked = 0
+    for stored in db.scalars(
+        select(RefreshToken).where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))
+    ):
+        stored.revoked_at = now
+        revoked += 1
+    audit.record(
+        db,
+        action="auth.logout_all",
+        user=user,
+        request=request,
+        resource_type="user",
+        resource_id=user.id,
+        detail={"revoked_sessions": revoked},
+    )
+    _clear_refresh_cookie(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
+
+
 @router.get("/me", response_model=UserRead)
 def me(user: CurrentUser) -> UserRead:
     return UserRead.model_validate(user)

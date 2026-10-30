@@ -13,6 +13,7 @@ import { ColorField } from '@/components/ui/ColorField'
 import { Modal } from '@/components/ui/Modal'
 import { Badge, ErrorState, LoadingBlock, Notice, Progress, StatTile } from '@/components/ui/Primitives'
 import { cmToInches, formatBytes, formatDate, inchesToCm, titleCase } from '@/lib/format'
+import { getPreferredUnits, setPreferredUnits, type UnitSystem } from '@/lib/preferences'
 import type {
   Avatar,
   MediaAsset,
@@ -23,7 +24,7 @@ import type {
   SizeRecommendation,
 } from '@/lib/types'
 
-type Unit = 'metric' | 'imperial'
+type Unit = UnitSystem
 
 const measurementFields = [
   { key: 'bust_cm', label: 'Bust / chest' },
@@ -55,7 +56,7 @@ export function ProfilePage() {
   const queryClient = useQueryClient()
   const { user, refreshUser, logout } = useAuthStore()
 
-  const [unit, setUnit] = useState<Unit>('metric')
+  const [unit, setUnit] = useState<Unit>(() => getPreferredUnits())
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [height, setHeight] = useState('')
   const [weight, setWeight] = useState('')
@@ -143,6 +144,7 @@ export function ProfilePage() {
       const numeric = Number(weight)
       setWeight(String(next === 'imperial' ? Math.round(numeric * 2.20462) : Math.round(numeric / 2.20462)))
     }
+    setPreferredUnits(next)
     setUnit(next)
   }
 
