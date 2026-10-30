@@ -31,6 +31,14 @@ class UploadError(Exception):
 
 
 @dataclass
+class StoredBlob:
+    storage_key: str
+    mime_type: str
+    byte_size: int
+    checksum_sha256: str
+
+
+@dataclass
 class StoredImage:
     storage_key: str
     thumbnail_key: str | None
@@ -141,6 +149,41 @@ def save_image(
         width=width,
         height=height,
         checksum_sha256=hashlib.sha256(normalized).hexdigest(),
+    )
+
+
+BINARY_TYPES = {
+    "png": "image/png",
+    "pdf": "application/pdf",
+    "zip": "application/zip",
+    "json": "application/json",
+}
+
+
+def save_binary(
+    *,
+    data: bytes,
+    original_filename: str,
+    kind: str,
+    extension: str,
+    mime_type: str | None = None,
+) -> StoredBlob:
+    """Store a non-image generated artefact (PDF/ZIP) under MEDIA_ROOT."""
+
+    if not data:
+        raise UploadError("The generated file is empty.")
+    ext = extension.lower().lstrip(".")
+    if ext not in BINARY_TYPES:
+        raise UploadError("Unsupported generated file type.", code="bad_extension")
+    storage_key = f"{kind}/{uuid.uuid4().hex}.{ext}"
+    target = path_for(storage_key)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return StoredBlob(
+        storage_key=storage_key,
+        mime_type=mime_type or BINARY_TYPES[ext],
+        byte_size=len(data),
+        checksum_sha256=hashlib.sha256(data).hexdigest(),
     )
 
 

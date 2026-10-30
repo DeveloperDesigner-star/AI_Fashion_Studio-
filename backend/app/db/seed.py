@@ -741,37 +741,178 @@ def seed_catalog(db: Session) -> dict[str, int]:
 
 
 def seed_demo_marketplace(db: Session) -> int:  # pragma: no cover - optional demo path
-    """Optional sample studios for local demos. Never run in production."""
-    from app.models.business import Business
+    """Optional sample studios for local demos. Never run in production.
+
+    Offerings, service areas and portfolio entries are seeded too so the
+    marketplace has something real to browse. Portfolio imagery is left for the
+    studio owner to upload; no stock or copyrighted photography is shipped.
+    """
+
+    from app.models.business import (
+        Business,
+        BusinessOffering,
+        BusinessPortfolioItem,
+        BusinessServiceArea,
+    )
 
     samples = [
         {
-            "name": "Atelier Noor",
-            "slug": "atelier-noor",
-            "type": "tailor",
-            "description": "Made-to-measure womenswear atelier working with the studio's technical packs.",
-            "city": "Lahore",
-            "country": "Pakistan",
-            "services": ["tailoring", "sampling", "hand embroidery"],
-            "price_from_cents": 8000,
-            "is_verified": False,
+            "business": {
+                "name": "Atelier Noor",
+                "slug": "atelier-noor",
+                "type": "atelier",
+                "tagline": "Made-to-measure womenswear, cut from your technical pack.",
+                "description": "Small atelier working with home studios on samples, fit rounds and short runs.",
+                "city": "Lahore",
+                "country": "Pakistan",
+                "address_line": "24 Gulberg III",
+                "postal_code": "54660",
+                "services": ["tailoring", "sampling", "hand embroidery"],
+                "price_from_cents": 8000,
+                "currency": "USD",
+                "response_time_hours": 24,
+                "min_order_cents": 8000,
+                "lead_time_days": 21,
+                "is_verified": False,
+            },
+            "offerings": [
+                {
+                    "kind": "service",
+                    "name": "Sample garment",
+                    "description": "One sample from a technical pack, including one fit correction.",
+                    "category": "sampling",
+                    "pricing_mode": "fixed",
+                    "price_cents": 12000,
+                    "unit": "piece",
+                    "lead_time_days": 14,
+                    "sort_order": 0,
+                },
+                {
+                    "kind": "service",
+                    "name": "Hand embroidery panel",
+                    "description": "Hand-worked panel priced by the hour after a sample.",
+                    "category": "embroidery",
+                    "pricing_mode": "quote",
+                    "unit": "panel",
+                    "lead_time_days": 18,
+                    "sort_order": 1,
+                },
+            ],
+            "service_areas": [
+                {"label": "Lahore metro", "city": "Lahore", "country": "Pakistan", "radius_km": 35},
+                {"label": "Remote fittings", "country": "Pakistan", "remote": True},
+            ],
+            "portfolio": [
+                {
+                    "title": "Ivory lattice shalwar kameez",
+                    "description": "Sample cut from the studio's eight-component template, hand-finished neckline.",
+                    "sort_order": 0,
+                },
+                {
+                    "title": "Winter wool capsule",
+                    "description": "Three-piece capsule in brushed wool with a faced collar.",
+                    "sort_order": 1,
+                },
+            ],
         },
         {
-            "name": "Northline Print Works",
-            "slug": "northline-print-works",
-            "type": "printing",
-            "description": "Reactive and pigment printing on natural fibres, 300 DPI production proofs.",
-            "city": "Faisalabad",
-            "country": "Pakistan",
-            "services": ["digital printing", "screen printing", "fabric sourcing"],
-            "price_from_cents": 2500,
-            "is_verified": False,
+            "business": {
+                "name": "Northline Print Works",
+                "slug": "northline-print-works",
+                "type": "printing",
+                "tagline": "Reactive and pigment printing, proofs checked at 300 DPI.",
+                "description": "Short-run fabric printing. Submit a print package; proofs are checked against the requested DPI and print area.",
+                "city": "Faisalabad",
+                "country": "Pakistan",
+                "address_line": "Plot 9, Sargodha Road",
+                "postal_code": "38000",
+                "services": ["digital printing", "screen printing", "fabric sourcing"],
+                "price_from_cents": 2500,
+                "currency": "USD",
+                "response_time_hours": 12,
+                "min_order_cents": 5000,
+                "lead_time_days": 10,
+                "is_verified": False,
+            },
+            "offerings": [
+                {
+                    "kind": "service",
+                    "name": "Pigment print run",
+                    "description": "Per-metre pigment printing on cotton and blends, 5 metre minimum.",
+                    "category": "printing",
+                    "pricing_mode": "per_unit",
+                    "price_cents": 900,
+                    "unit": "metre",
+                    "min_quantity": 5,
+                    "lead_time_days": 10,
+                    "sort_order": 0,
+                },
+                {
+                    "kind": "service",
+                    "name": "Reactive print run",
+                    "description": "Reactive dyes on cellulosics; quoted after artwork review.",
+                    "category": "printing",
+                    "pricing_mode": "quote",
+                    "unit": "metre",
+                    "min_quantity": 20,
+                    "lead_time_days": 15,
+                    "sort_order": 1,
+                },
+                {
+                    "kind": "product",
+                    "name": "Sample swatch pack",
+                    "description": "Six printed swatches on the base cloths we keep in stock.",
+                    "category": "samples",
+                    "pricing_mode": "fixed",
+                    "price_cents": 1800,
+                    "unit": "pack",
+                    "lead_time_days": 5,
+                    "sort_order": 2,
+                },
+            ],
+            "service_areas": [
+                {"label": "Faisalabad and Lahore", "city": "Faisalabad", "country": "Pakistan", "radius_km": 150},
+                {"label": "Nationwide courier", "country": "Pakistan", "remote": True},
+            ],
+            "portfolio": [
+                {
+                    "title": "Indigo yardage",
+                    "description": "Reactive indigo on khaddar, printed from a submitted print package.",
+                    "sort_order": 0,
+                },
+                {
+                    "title": "Pigment panel tests",
+                    "description": "Colour-density tests on poplin before a production run.",
+                    "sort_order": 1,
+                },
+            ],
         },
     ]
+
     added = 0
     for sample in samples:
-        if db.scalar(select(Business).where(Business.slug == sample["slug"])) is None:
-            db.add(Business(**sample))
+        data = sample["business"]
+        business = db.scalar(select(Business).where(Business.slug == data["slug"]))
+        if business is None:
+            business = Business(**data)
+            db.add(business)
+            db.flush()
             added += 1
+        else:
+            for field, value in data.items():
+                if field in {"name", "slug", "type"}:
+                    continue
+                current = getattr(business, field, None)
+                if current is None or current == "" or current == []:
+                    setattr(business, field, value)
+        if db.scalar(select(BusinessOffering.id).where(BusinessOffering.business_id == business.id).limit(1)) is None:
+            for offering in sample["offerings"]:
+                db.add(BusinessOffering(business_id=business.id, **offering))
+        if db.scalar(select(BusinessServiceArea.id).where(BusinessServiceArea.business_id == business.id).limit(1)) is None:
+            for area in sample["service_areas"]:
+                db.add(BusinessServiceArea(business_id=business.id, **area))
+        if db.scalar(select(BusinessPortfolioItem.id).where(BusinessPortfolioItem.business_id == business.id).limit(1)) is None:
+            for item in sample["portfolio"]:
+                db.add(BusinessPortfolioItem(business_id=business.id, **item))
     db.commit()
     return added

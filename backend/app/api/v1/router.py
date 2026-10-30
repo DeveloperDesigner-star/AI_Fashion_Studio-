@@ -14,6 +14,7 @@ from app.api.v1.endpoints import (
     meta,
     notifications,
     outfits,
+    print_job,
     profile,
     try_on,
 )
@@ -27,6 +28,7 @@ api_router.include_router(catalog.router)
 api_router.include_router(designs.router)
 api_router.include_router(outfits.router)
 api_router.include_router(try_on.router)
+api_router.include_router(print_job.router)
 api_router.include_router(media.router)
 api_router.include_router(ai.router)
 api_router.include_router(marketplace.router)

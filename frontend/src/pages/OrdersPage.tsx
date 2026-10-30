@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { LinkButton } from '@/components/ui/Button'
 import { Badge, EmptyState, ErrorState, PageHeader, Skeleton } from '@/components/ui/Primitives'
 import { formatDate, formatPrice, titleCase } from '@/lib/format'
+import { productionLabel, productionTone } from '@/lib/marketplace'
 import type { QuoteRequest } from '@/lib/types'
 
 const statusTone: Record<string, 'neutral' | 'olive' | 'gold' | 'clay' | 'danger' | 'ink'> = {
@@ -95,13 +96,21 @@ export function OrdersPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-mono text-[0.6875rem] text-ink-muted">{request.reference_code}</p>
                 <Badge tone={statusTone[request.status] ?? 'neutral'}>{titleCase(request.status)}</Badge>
+                <Badge tone={productionTone(request.production_status)}>
+                  {productionLabel(request.production_status)}
+                </Badge>
                 <Badge tone="neutral">{titleCase(request.service_type)}</Badge>
+                {request.print_package && <Badge tone="clay">Print package</Badge>}
+                {request.review && <Badge tone="olive">Reviewed</Badge>}
               </div>
               <p className="mt-1 truncate font-display text-lg leading-tight">{request.title}</p>
               <p className="text-xs text-ink-muted">
                 {request.business ? request.business.name : 'Unassigned — open to the network'} ·{' '}
                 {request.quotes.length} quote{request.quotes.length === 1 ? '' : 's'} ·{' '}
                 {request.messages.length} message{request.messages.length === 1 ? '' : 's'}
+                {request.agreed_amount_cents !== null
+                  ? ` · agreed ${formatPrice(request.agreed_amount_cents, request.agreed_currency ?? request.currency)}`
+                  : ''}
               </p>
             </div>
             <div className="flex items-center gap-4 text-xs text-ink-muted">

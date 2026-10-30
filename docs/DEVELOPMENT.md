@@ -11,7 +11,8 @@ Conventions, commands and workflows for extending AI Fashion Studio. Read
 backend/
   app/
     api/v1/endpoints/   one module per resource (auth, profile, avatars, catalog, designs,
-                        outfits, media, ai, marketplace, notifications, admin, meta)
+                        outfits, media, ai, try_on, print_job, marketplace, notifications,
+                        admin, meta)
     api/v1/deps.py      DbSession / CurrentUser / AdminUser dependencies
     core/               settings, security primitives, rate limiting, logging
     db/                 engine + session factory, catalogue seed

@@ -31,6 +31,13 @@ import type {
   PublicConfig,
   QuoteRequest,
   Business,
+  BusinessDetail,
+  BusinessOffering,
+  BusinessPortfolioItem,
+  BusinessReview,
+  BusinessServiceArea,
+  PrintCapabilities,
+  PrintPackage,
   User,
 } from '@/lib/types'
 
@@ -55,6 +62,11 @@ export const qk = {
   businesses: (params: Record<string, string | undefined>) => ['businesses', params] as const,
   requests: (scope: string) => ['requests', scope] as const,
   request: (id: string) => ['request', id] as const,
+  business: (slug: string) => ['business', slug] as const,
+  myBusinesses: ['businesses', 'mine'] as const,
+  printCapabilities: ['print', 'capabilities'] as const,
+  printPackages: (scope: string) => ['print', 'packages', scope] as const,
+  printPackage: (id: string) => ['print', 'package', id] as const,
   notifications: ['notifications'] as const,
   adminStats: ['admin', 'stats'] as const,
   adminUsers: (params: { q?: string; role?: string } = {}) => ['admin', 'users', params] as const,
@@ -119,6 +131,55 @@ export const fetchers = {
   requests: (scope: 'outgoing' | 'incoming' = 'outgoing') =>
     api.get<{ items: QuoteRequest[]; total: number }>(`/marketplace/requests?scope=${scope}`),
   request: (id: string) => api.get<QuoteRequest>(`/marketplace/requests/${id}`),
+  business: (slug: string) => api.get<BusinessDetail>(`/marketplace/businesses/${slug}`),
+  myBusinesses: () => api.get<BusinessDetail[]>('/marketplace/businesses/mine'),
+  updateBusiness: (id: string, body: Record<string, unknown>) =>
+    api.put<Business>(`/marketplace/businesses/${id}`, body),
+  createOffering: (businessId: string, body: Record<string, unknown>) =>
+    api.post<BusinessOffering>(`/marketplace/businesses/${businessId}/offerings`, body),
+  updateOffering: (id: string, body: Record<string, unknown>) =>
+    api.put<BusinessOffering>(`/marketplace/offerings/${id}`, body),
+  deleteOffering: (id: string) => api.delete(`/marketplace/offerings/${id}`),
+  createServiceArea: (businessId: string, body: Record<string, unknown>) =>
+    api.post<BusinessServiceArea>(`/marketplace/businesses/${businessId}/service-areas`, body),
+  deleteServiceArea: (id: string) => api.delete(`/marketplace/service-areas/${id}`),
+  createPortfolioItem: (businessId: string, body: Record<string, unknown>) =>
+    api.post<BusinessPortfolioItem>(`/marketplace/businesses/${businessId}/portfolio`, body),
+  uploadPortfolioImage: (businessId: string, itemId: string, file: File) =>
+    api.upload<BusinessPortfolioItem>(`/marketplace/businesses/${businessId}/portfolio/${itemId}/image`, file, {}),
+  deletePortfolioItem: (id: string) => api.delete(`/marketplace/portfolio/${id}`),
+  reviewOrder: (orderId: string, body: Record<string, unknown>) =>
+    api.post<BusinessReview>(`/marketplace/requests/${orderId}/reviews`, body),
+  replyToReview: (reviewId: string, body: string) =>
+    api.post<BusinessReview>(`/marketplace/reviews/${reviewId}/reply`, { body }),
+  orderTransitions: (orderId: string) =>
+    api.get<{ production_status: string; role: string; allowed: string[]; all_states: string[] }>(
+      `/marketplace/requests/${orderId}/transitions`,
+    ),
+  setProductionStatus: (orderId: string, status: string, note?: string) =>
+    api.post<QuoteRequest>(`/marketplace/requests/${orderId}/production-status`, {
+      status,
+      note: note || null,
+    }),
+  attachPrintPackage: (orderId: string, printPackageId: string | null) =>
+    api.post<QuoteRequest>(`/marketplace/requests/${orderId}/print-package`, {
+      print_package_id: printPackageId,
+    }),
+  printCapabilities: () => api.get<PrintCapabilities>('/print/capabilities'),
+  printPackages: (scope: 'mine' | 'shared' = 'mine') =>
+    api.get<{ items: PrintPackage[]; total: number }>(`/print/packages?scope=${scope}`),
+  printPackage: (id: string) => api.get<PrintPackage>(`/print/packages/${id}`),
+  createPrintPackage: (body: Record<string, unknown>) =>
+    api.post<PrintPackage>('/print/packages', body),
+  submitPrintPackage: (id: string) => api.post<PrintPackage>(`/print/packages/${id}/submit`),
+  approvePrintPackage: (id: string) => api.post<PrintPackage>(`/print/packages/${id}/approve`),
+  requestPrintChanges: (id: string, reason: string) =>
+    api.post<PrintPackage>(`/print/packages/${id}/request-changes`, { reason }),
+  exportPrintPackage: (id: string, format: 'pdf' | 'png_zip') =>
+    api.post<{ format: string; filename: string; download_url: string; meta: Record<string, unknown> }>(
+      `/print/packages/${id}/export`,
+      { format },
+    ),
   notifications: () => api.get<NotificationList>('/notifications'),
   adminStats: () => api.get<AdminStats>('/admin/stats'),
   adminUsers: (params: { q?: string; role?: string } = {}) => {

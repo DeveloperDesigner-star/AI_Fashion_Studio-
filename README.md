@@ -4,7 +4,7 @@ A production-shaped web platform for AI-assisted fashion design: parametric avat
 component-level garment editor, a WebGL fitting room, print preparation, and a quoting
 marketplace between clients and workshops.
 
-**Status: Phases 1–7 implemented; the local lint/test/build gate is green.** Backend (FastAPI +
+**Status: Phases 1–8 implemented; the local lint/test/build gate is green.** Backend (FastAPI +
 PostgreSQL/SQLite) and frontend (React + TypeScript + Vite + Tailwind + React Three Fiber) run
 together; every screen in the route table is implemented against a real API. AI features degrade
 explicitly when no provider key is configured — they never fabricate model output. The CatVTON GPU
@@ -33,10 +33,11 @@ worker, the try-on page reports an explicit unavailable state and saves no place
 | N | Image processing | Pillow/OpenCV uploads: EXIF normalisation, resize, thumbnails, palette extraction, framing checks, GrabCut background removal and baked crops as transparent PNGs |
 | O | Virtual try-on | `/try-on`: private full-body photo or saved avatar; catalogue garment + saved design + size/fabric/colour; approximate CatVTON preview via a self-hosted GPU worker, with an explicit unavailable state when no worker is configured; saved results and original-vs-customised comparison. Catalogue footwear is a separate 3D mesh parented to `foot_L`/`foot_R`; accessories use rigged meshes. Photo consent is per-session, results are private, and no training path exists |
 | P | Outfit saving & comparison | Save/lookup outfits, favourite, compare 2–3 outfits slot-by-slot with price totals |
-| Q | Print preparation | Print sheet generation with bleed/DPI metadata, PNG download; designs flatten only when a proof is exported |
-| R | Print marketplace | Studio directory, quote requests, quote accept/decline, per-request threads |
-| S | Orders & quotations | Outgoing/incoming request lists, status timeline, technical-pack export |
+| Q | Print preparation | `/print`: component-level print packages with pixel dimensions, effective-DPI checks (never upscaled), print area in cm, bleed, sRGB/source colour reporting, transparency preserved, per-component PNGs and a locally written PDF at exact physical size; approval workflow separate from AI previews |
+| R | Print marketplace | Studio directory with services, products, pricing modes, service areas, portfolio and reviews; quote requests, accept/decline, per-request threads |
+| S | Orders & quotations | Outgoing/incoming lists, the ten-state production workflow with role-checked transitions and an immutable audit trail, quote/agreed amounts, reviews and studio replies |
 | T | Admin dashboard | Stats, user/role management, studio verification, request oversight |
+| T2 | Business dashboard | `/business`: profile, offerings and pricing modes, service areas, portfolio uploads, listing visibility, recent orders |
 | — | User dashboard | `/dashboard`: readiness checklist, recent designs, saved looks, open requests, storage and notice feed |
 | — | Fashion studio hub | `/studio`: six entries (women, men, accessories, design library, fitting room, stylist) plus catalogue selection |
 | — | Design library | `/designs`: filter by status, search, open the layered studio, quick edit with `?design=` deep link, duplicate, archive, delete, try on |
@@ -56,6 +57,9 @@ worker, the try-on page reports an explicit unavailable state and saves no place
 - **Avatars are illustrations, not body scans.** Four bundled GLB mannequins (`willow`, `atlas`,
   `line`, `curve`) are scaled from the measurements the user types. No photograph is ever
   reconstructed into a body, and weight, age or exact measurements are never inferred from an image.
+- **Print files are not AI previews.** `print_packages`/`print_files` are built from submitted
+  component artwork and solid design colours; try-on results and AI renders are never written into
+  a print package.
 - **3D try-on is a fitted sample wardrobe, not an auto-fit.** The fitting room ships two rigged base
   bodies and a small set of authored, skinned sample silhouettes (kameez/kurta, shalwar/trouser,
   waistcoat, dupatta, flat shoe, tote, watch band, cap). Catalogue slots map onto those samples and the
@@ -63,6 +67,11 @@ worker, the try-on page reports an explicit unavailable state and saves no place
   into a 3D gown, and there is no cloth simulation or arbitrary garment fitting; unsupported pieces
   are labelled “2D only” and remain in the flat preview and technical pack. The mannequin is generated
   from typed measurements, never reconstructed from a photo.
+- **No printer connectivity is claimed.** Print packages are generated locally and exported as
+  PDF/PNG-ZIP for manual hand-off. `/print/capabilities` reports `printer_connection: false` and an
+  empty integration list; a printer/RIP integration will only be added with a real, tested protocol.
+- **Print DPI is reported, not invented.** A 320 px artwork at 60 cm is reported as ~14 DPI and
+  flagged; it is never silently upscaled or presented as print-ready.
 - **AI try-on is honest.** CatVTON needs a CUDA GPU (>= 8 GB VRAM at 1024×768, bf16)
   and its code/checkpoints are CC BY-NC-SA 4.0, so it runs only on a self-hosted,
   non-commercial worker. Without `TRYON_REMOTE_URL` the API reports an explicit
@@ -103,15 +112,15 @@ worker, the try-on page reports an explicit unavailable state and saves no place
 ```
 backend/
   app/
-    api/v1/endpoints/   auth, profile, avatars, catalog, designs, outfits,
-                        media, ai, marketplace, notifications, admin, meta
+    api/v1/endpoints/   auth, profile, avatars, catalog, designs, outfits, media,
+                        ai, try_on, print_job, marketplace, notifications, admin, meta
     core/               config, security, rate limits, logging
     db/                 session, seed catalogue
     models/             SQLAlchemy models + enums
     schemas/            Pydantic request/response contracts
-    services/           imaging, sizing, ai registry/providers, try-on client, print, export, audit
+    services/           imaging, sizing, ai registry/providers, try-on client, print-jobs, orders, audit
   alembic/              migrations
-  tests/                backend Pytest suite (incl. try-on worker contract)
+  tests/                backend Pytest suite (incl. try-on worker contract, print packages and production workflow)
   scripts/              init_db, create_admin, docker-entrypoint
 services/
   tryon-worker/         standalone CatVTON GPU worker (not run in the API container)
@@ -242,6 +251,9 @@ Interactive documentation is served at `/docs`.
 | `/studio/accessories` | public | Footwear and accessories, filterable by category and style |
 | `/garment/:slug` | public (save requires auth) | Component editor, try-on, AI analysis |
 | `/marketplace` | public (request requires auth) | Studio directory and quote requests |
+| `/marketplace/:slug` | public | Studio profile: services, pricing, areas, portfolio, reviews |
+| `/print`, `/print/:id` | user | Print packages, DPI report, approval and downloads |
+| `/business` | user (business) | Business dashboard: profile, offerings, areas, portfolio |
 | `/onboarding` | user | Three-step setup with live avatar and sizing |
 | `/dashboard` | user | Personal dashboard |
 | `/designs` | user | Saved design library |
@@ -397,6 +409,7 @@ Verified against a live API on 2026-10-30:
 - [Installation guide](docs/INSTALLATION.md) — clean machine to running instance, Docker, troubleshooting.
 - [Development guide](docs/DEVELOPMENT.md) — conventions, commands, testing, adding endpoints and pages.
 - [Architecture](docs/ARCHITECTURE.md) — layers, data model, auth, AI routing, media pipeline, deployment.
+- [Printing & production](docs/PRINTING.md) — print packages, DPI/colour rules, PDF/ZIP export, the ten-state workflow, reviews, and the honest printer-integration status.
 
 ---
 
@@ -418,7 +431,7 @@ For production: terminate TLS in front of nginx, set `COOKIE_SECURE=true`, restr
 
 ## Roadmap
 
-Phase 1 (this delivery) covers the full vertical slice above. Later phases will add cloth
-simulation, photographic try-on with user-supplied images, multi-currency checkout with payment
-providers, and richer production scheduling. Those require paid services or additional hardware and
-will only be added with explicit approval.
+Phases 1–8 cover the full vertical slice above. Later work will add cloth simulation, a tested
+printer/RIP integration (only with the real protocol and device available), payment providers and
+richer production scheduling. Those require paid services or additional hardware and will only be
+added with explicit approval.

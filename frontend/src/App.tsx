@@ -21,6 +21,10 @@ import { OutfitsPage } from '@/pages/OutfitsPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { AssistantPage } from '@/pages/AssistantPage'
 import { MarketplacePage } from '@/pages/MarketplacePage'
+import { BusinessPage } from '@/pages/BusinessPage'
+import { BusinessDashboardPage } from '@/pages/BusinessDashboardPage'
+import { PrintPackagesPage } from '@/pages/PrintPackagesPage'
+import { PrintPackagePage } from '@/pages/PrintPackagePage'
 import { OrdersPage } from '@/pages/OrdersPage'
 import { OrderDetailPage } from '@/pages/OrderDetailPage'
 import { NotificationsPage } from '@/pages/NotificationsPage'
@@ -43,6 +47,7 @@ export default function App() {
         <Route path="studio/:gender" element={<StudioPage />} />
         <Route path="garment/:slug" element={<GarmentPage />} />
         <Route path="marketplace" element={<MarketplacePage />} />
+        <Route path="marketplace/:slug" element={<BusinessPage />} />
 
         <Route path="dashboard" element={protectedPage(<DashboardPage />)} />
         <Route path="designs" element={protectedPage(<DesignsPage />)} />
@@ -56,6 +61,9 @@ export default function App() {
         <Route path="outfits" element={protectedPage(<OutfitsPage />)} />
         <Route path="profile" element={protectedPage(<ProfilePage />)} />
         <Route path="assistant" element={protectedPage(<AssistantPage />)} />
+        <Route path="business" element={protectedPage(<BusinessDashboardPage />)} />
+        <Route path="print" element={protectedPage(<PrintPackagesPage />)} />
+        <Route path="print/:id" element={protectedPage(<PrintPackagePage />)} />
         <Route path="orders" element={protectedPage(<OrdersPage />)} />
         <Route path="orders/:id" element={protectedPage(<OrderDetailPage />)} />
         <Route path="notifications" element={protectedPage(<NotificationsPage />)} />

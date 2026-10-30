@@ -526,23 +526,179 @@ export interface DesignAnalysis {
   notice: string | null
 }
 
+export type BusinessType =
+  | 'tailor'
+  | 'printing'
+  | 'fabric'
+  | 'brand'
+  | 'atelier'
+  | 'designer'
+  | 'manufacturer'
+
 export interface Business {
   id: string
   name: string
   slug: string
-  type: 'tailor' | 'printing' | 'fabric' | 'brand' | 'atelier'
+  type: BusinessType
+  tagline: string
   description: string
   city: string
   country: string
+  address_line: string
+  postal_code: string
   services: string[]
   contact_email: string | null
   contact_phone: string | null
   website: string | null
   price_from_cents: number | null
   currency: string
+  response_time_hours: number | null
+  min_order_cents: number | null
+  lead_time_days: number | null
   rating: number
+  review_count: number
   is_verified: boolean
   is_active: boolean
+}
+
+export type OfferingKind = 'service' | 'product'
+export type PricingMode = 'fixed' | 'from' | 'per_unit' | 'quote'
+
+export interface BusinessOffering {
+  id: string
+  business_id: string
+  kind: OfferingKind
+  name: string
+  description: string
+  category: string
+  pricing_mode: PricingMode
+  price_cents: number | null
+  currency: string
+  unit: string
+  min_quantity: number
+  lead_time_days: number | null
+  is_active: boolean
+  sort_order: number
+}
+
+export interface BusinessServiceArea {
+  id: string
+  label: string
+  city: string
+  country: string
+  radius_km: number | null
+  remote: boolean
+  notes: string | null
+}
+
+export interface BusinessPortfolioItem {
+  id: string
+  business_id: string
+  title: string
+  description: string
+  media_asset_id: string | null
+  project_date: string | null
+  sort_order: number
+  image_url: string | null
+}
+
+export interface BusinessReview {
+  id: string
+  business_id: string
+  order_id: string
+  user_id: string
+  rating: number
+  title: string
+  body: string
+  business_reply: string | null
+  created_at: string
+  reviewer_name: string | null
+}
+
+export interface BusinessDetail extends Business {
+  offerings: BusinessOffering[]
+  service_areas: BusinessServiceArea[]
+  portfolio: BusinessPortfolioItem[]
+  reviews: BusinessReview[]
+}
+
+export type ProductionStatus =
+  | 'order_received'
+  | 'quote_pending'
+  | 'quote_approved'
+  | 'design_approved'
+  | 'production_pending'
+  | 'printing_in_progress'
+  | 'quality_checking'
+  | 'ready_for_delivery'
+  | 'completed'
+  | 'cancelled'
+
+export type PrintPackageStatus = 'draft' | 'in_review' | 'approved' | 'changes_requested'
+
+export interface PrintFile {
+  id: string
+  component_id: string
+  label: string
+  width_px: number
+  height_px: number
+  target_width_cm: number
+  target_height_cm: number
+  effective_dpi: number
+  dpi_ok: boolean
+  has_transparency: boolean
+  color_space: string
+  color_profile: string
+  warnings: string[]
+  content_url: string | null
+  preview_url: string | null
+  source: 'print_artwork' | 'solid_colour' | string
+}
+
+export interface PrintPackage {
+  id: string
+  user_id: string
+  design_id: string | null
+  name: string
+  status: PrintPackageStatus
+  width_cm: number
+  height_cm: number
+  bleed_mm: number
+  dpi: number
+  color_profile: string
+  transparent_background: boolean
+  notes: string | null
+  approved_at: string | null
+  rejection_reason: string | null
+  manifest: Record<string, unknown>
+  files: PrintFile[]
+  pdf_url: string | null
+  zip_url: string | null
+  is_ai_preview: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface PrintCapabilities {
+  dpi: { min: number; max: number; recommended: number }
+  color_profiles: string[]
+  color_management: string
+  transparent_background: boolean
+  exports: string[]
+  pdf: string
+  component_files: boolean
+  printer_connection: boolean
+  printer_integrations: string[]
+  integration_mode: string
+  note: string
+}
+
+export interface OrderEvent {
+  id: string
+  from_status: string | null
+  to_status: string
+  note: string | null
+  created_at: string
 }
 
 export interface Quote {
@@ -565,6 +721,7 @@ export interface QuoteMessage {
 
 export interface QuoteRequest {
   id: string
+  user_id: string
   reference_code: string
   title: string
   description: string
@@ -574,10 +731,21 @@ export interface QuoteRequest {
   budget_cents: number | null
   currency: string
   status: string
+  production_status: ProductionStatus
+  agreed_amount_cents: number | null
+  agreed_currency: string | null
+  design_approved_at: string | null
+  completed_at: string | null
+  cancelled_at: string | null
+  cancellation_reason: string | null
+  print_package_id: string | null
+  print_package: PrintPackage | null
   specs: Record<string, unknown>
   business: Business | null
   quotes: Quote[]
   messages: QuoteMessage[]
+  events: OrderEvent[]
+  review: BusinessReview | null
   created_at: string
   updated_at: string
 }

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '@/lib/api'
 import { fetchers, qk } from '@/lib/queries'
@@ -10,7 +10,7 @@ import { Input, Select, Textarea } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
 import { Badge, EmptyState, ErrorState, PageHeader, Skeleton } from '@/components/ui/Primitives'
 import { formatPrice, titleCase } from '@/lib/format'
-import type { Business, QuoteRequest } from '@/lib/types'
+import type { Business, PrintPackage, QuoteRequest } from '@/lib/types'
 
 const businessTypes = [
   { value: 'tailor', label: 'Tailor / made-to-measure' },
@@ -18,15 +18,20 @@ const businessTypes = [
   { value: 'fabric', label: 'Fabric supplier' },
   { value: 'atelier', label: 'Atelier' },
   { value: 'brand', label: 'Brand' },
+  { value: 'designer', label: 'Designer' },
+  { value: 'manufacturer', label: 'Manufacturer' },
 ]
 
 export function MarketplacePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = useAuthStore((state) => state.user)
+  const refreshUser = useAuthStore((state) => state.refreshUser)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [type, setType] = useState('')
   const [search, setSearch] = useState('')
+  const [minRating, setMinRating] = useState('')
   const [requestTarget, setRequestTarget] = useState<Business | null>(null)
   const [requestOpen, setRequestOpen] = useState(false)
   const [registerOpen, setRegisterOpen] = useState(false)
@@ -39,33 +44,69 @@ export function MarketplacePage() {
     target_date: '',
     budget: '',
     outfit_id: '',
+    print_package_id: '',
   })
   const [businessForm, setBusinessForm] = useState({
     name: '',
     type: 'tailor',
     city: '',
     country: '',
+    tagline: '',
     description: '',
     services: '',
     contact_email: '',
+    contact_phone: '',
+    website: '',
+    address_line: '',
+    postal_code: '',
     price_from: '',
+    response_time_hours: '',
+    min_order: '',
+    lead_time_days: '',
   })
 
   const businesses = useQuery({
-    queryKey: qk.businesses({ type, q: search }),
-    queryFn: () => fetchers.businesses({ type: type || undefined, q: search || undefined }),
+    queryKey: qk.businesses({ type, q: search, min_rating: minRating }),
+    queryFn: () =>
+      fetchers.businesses({
+        type: type || undefined,
+        q: search || undefined,
+        min_rating: minRating || undefined,
+      }),
   })
   const outfits = useQuery({
     queryKey: qk.outfits,
     queryFn: fetchers.outfits,
     enabled: Boolean(user),
   })
+  const printPackages = useQuery({
+    queryKey: qk.printPackages('mine'),
+    queryFn: () => fetchers.printPackages('mine'),
+    enabled: Boolean(user),
+  })
+
+  const approvedPackages = (printPackages.data?.items ?? []).filter(
+    (item: PrintPackage) => item.status === 'approved',
+  )
+
+  // Deep link from a studio page: /marketplace?business=<id>&request=1
+  const requestedBusinessId = searchParams.get('business')
+  const requestRequested = searchParams.get('request') === '1'
+  useEffect(() => {
+    if (!requestRequested || !user) return
+    const match = businesses.data?.items.find((item) => item.id === requestedBusinessId)
+    if (!match) return
+    setRequestTarget(match)
+    setRequestOpen(true)
+    setSearchParams({}, { replace: true })
+  }, [businesses.data, requestRequested, requestedBusinessId, setSearchParams, user])
 
   const createRequest = useMutation({
     mutationFn: () =>
       api.post<QuoteRequest>('/marketplace/requests', {
         business_id: requestTarget?.id ?? null,
         outfit_id: requestForm.outfit_id || null,
+        print_package_id: requestForm.print_package_id || null,
         title: requestForm.title.trim(),
         description: requestForm.description.trim(),
         service_type: requestForm.service_type,
@@ -77,7 +118,7 @@ export function MarketplacePage() {
       queryClient.invalidateQueries({ queryKey: qk.notifications })
       setRequestOpen(false)
       setRequestTarget(null)
-      setRequestForm({ title: '', description: '', service_type: 'tailoring', quantity: '1', target_date: '', budget: '', outfit_id: '' })
+      setRequestForm({ title: '', description: '', service_type: 'tailoring', quantity: '1', target_date: '', budget: '', outfit_id: '', print_package_id: '' })
       toast.success('Request submitted', `Reference ${request.reference_code}. Track it under Requests.`)
       navigate(`/orders/${request.id}`)
     },
@@ -92,17 +133,27 @@ export function MarketplacePage() {
         type: businessForm.type,
         city: businessForm.city.trim(),
         country: businessForm.country.trim(),
+        tagline: businessForm.tagline.trim(),
+        address_line: businessForm.address_line.trim(),
+        postal_code: businessForm.postal_code.trim(),
         description: businessForm.description.trim(),
         services: businessForm.services
           .split(',')
           .map((item) => item.trim())
           .filter(Boolean),
         contact_email: businessForm.contact_email || null,
+        contact_phone: businessForm.contact_phone.trim() || null,
+        website: businessForm.website.trim() || null,
         price_from_cents: businessForm.price_from ? Math.round(Number(businessForm.price_from) * 100) : null,
+        response_time_hours: businessForm.response_time_hours ? Number(businessForm.response_time_hours) : null,
+        min_order_cents: businessForm.min_order ? Math.round(Number(businessForm.min_order) * 100) : null,
+        lead_time_days: businessForm.lead_time_days ? Number(businessForm.lead_time_days) : null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['businesses'] })
+      queryClient.invalidateQueries({ queryKey: qk.myBusinesses })
       setRegisterOpen(false)
+      void refreshUser()
       toast.success('Studio profile submitted', 'It is pending verification and visible in the directory.')
     },
     onError: (error) =>
@@ -157,8 +208,22 @@ export function MarketplacePage() {
             </button>
           ))}
         </div>
-        <div className="w-full sm:w-64">
-          <Input label="Search" placeholder="City or studio name" value={search} onChange={(event) => setSearch(event.target.value)} />
+        <div className="flex w-full gap-3 sm:w-auto">
+          <div className="w-full sm:w-40">
+            <Select
+              label="Rating"
+              value={minRating}
+              onChange={(event) => setMinRating(event.target.value)}
+              options={[
+                { value: '', label: 'Any rating' },
+                { value: '4', label: '4★ and up' },
+                { value: '3', label: '3★ and up' },
+              ]}
+            />
+          </div>
+          <div className="w-full sm:w-60">
+            <Input label="Search" placeholder="City or studio name" value={search} onChange={(event) => setSearch(event.target.value)} />
+          </div>
         </div>
       </div>
 
@@ -192,7 +257,9 @@ export function MarketplacePage() {
             <div className="flex items-start justify-between gap-3 border-b border-line p-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="font-display text-lg leading-tight">{business.name}</h2>
+                  <Link to={`/marketplace/${business.slug}`} className="font-display text-lg leading-tight hover:text-clay">
+                    {business.name}
+                  </Link>
                   {business.is_verified && <Badge tone="olive">Verified</Badge>}
                 </div>
                 <p className="mt-1 text-[0.625rem] uppercase tracking-[0.14em] text-ink-muted">
@@ -209,7 +276,14 @@ export function MarketplacePage() {
             </div>
 
             <div className="flex flex-1 flex-col p-4">
-              <p className="text-xs leading-relaxed text-ink-muted">{business.description}</p>
+              <p className="text-xs leading-relaxed text-ink-muted">
+                {business.tagline || business.description}
+              </p>
+              <p className="mt-2 text-[0.625rem] uppercase tracking-[0.12em] text-ink-muted">
+                {business.rating ? `${business.rating.toFixed(1)}★` : 'No rating'} · {business.review_count} review
+                {business.review_count === 1 ? '' : 's'}
+                {business.lead_time_days ? ` · ${business.lead_time_days} day lead time` : ''}
+              </p>
               {business.services.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1">
                   {business.services.map((service) => (
@@ -219,10 +293,15 @@ export function MarketplacePage() {
                   ))}
                 </div>
               )}
-              <div className="mt-auto flex items-center justify-between gap-2 pt-4">
-                <Button size="sm" onClick={() => openRequest(business)}>
-                  Request a quote
-                </Button>
+              <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-4">
+                <div className="flex gap-2">
+                  <LinkButton to={`/marketplace/${business.slug}`} size="sm" variant="outline">
+                    View studio
+                  </LinkButton>
+                  <Button size="sm" onClick={() => openRequest(business)}>
+                    Request a quote
+                  </Button>
+                </div>
                 {business.contact_email && (
                   <a
                     href={`mailto:${business.contact_email}`}
@@ -320,6 +399,21 @@ export function MarketplacePage() {
               onChange={(event) => setRequestForm({ ...requestForm, budget: event.target.value })}
             />
           </div>
+          {approvedPackages.length > 0 && (
+            <Select
+              label="Attach an approved print package"
+              hint="Production artwork with DPI report, separate from AI previews."
+              value={requestForm.print_package_id}
+              onChange={(event) => setRequestForm({ ...requestForm, print_package_id: event.target.value })}
+              options={[
+                { value: '', label: 'No print package' },
+                ...approvedPackages.map((item) => ({
+                  value: item.id,
+                  label: `${item.name} · ${item.files.length} files`,
+                })),
+              ]}
+            />
+          )}
           {outfits.data?.items.length ? (
             <Select
               label="Attach a saved outfit"
@@ -399,13 +493,63 @@ export function MarketplacePage() {
               value={businessForm.country}
               onChange={(event) => setBusinessForm({ ...businessForm, country: event.target.value })}
             />
+            <Input
+              label="Address"
+              value={businessForm.address_line}
+              onChange={(event) => setBusinessForm({ ...businessForm, address_line: event.target.value })}
+            />
+            <Input
+              label="Postal code"
+              value={businessForm.postal_code}
+              onChange={(event) => setBusinessForm({ ...businessForm, postal_code: event.target.value })}
+            />
+            <Input
+              label="Response time (hours)"
+              type="number"
+              min="1"
+              value={businessForm.response_time_hours}
+              onChange={(event) => setBusinessForm({ ...businessForm, response_time_hours: event.target.value })}
+            />
+            <Input
+              label="Minimum order"
+              type="number"
+              min="0"
+              suffix="USD"
+              value={businessForm.min_order}
+              onChange={(event) => setBusinessForm({ ...businessForm, min_order: event.target.value })}
+            />
+            <Input
+              label="Lead time (days)"
+              type="number"
+              min="1"
+              value={businessForm.lead_time_days}
+              onChange={(event) => setBusinessForm({ ...businessForm, lead_time_days: event.target.value })}
+            />
           </div>
           <Input
-            label="Contact email"
-            type="email"
-            value={businessForm.contact_email}
-            onChange={(event) => setBusinessForm({ ...businessForm, contact_email: event.target.value })}
+            label="Tagline"
+            value={businessForm.tagline}
+            onChange={(event) => setBusinessForm({ ...businessForm, tagline: event.target.value })}
+            maxLength={200}
           />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Contact email"
+              type="email"
+              value={businessForm.contact_email}
+              onChange={(event) => setBusinessForm({ ...businessForm, contact_email: event.target.value })}
+            />
+            <Input
+              label="Phone"
+              value={businessForm.contact_phone}
+              onChange={(event) => setBusinessForm({ ...businessForm, contact_phone: event.target.value })}
+            />
+            <Input
+              label="Website"
+              value={businessForm.website}
+              onChange={(event) => setBusinessForm({ ...businessForm, website: event.target.value })}
+            />
+          </div>
           <Input
             label="Services"
             hint="Comma separated: tailoring, hand embroidery, digital printing"

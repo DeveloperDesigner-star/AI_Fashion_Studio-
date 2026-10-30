@@ -138,6 +138,11 @@ class MediaKind(StrEnum):
     AVATAR = "avatar"
     EXPORT = "export"
     TRY_ON = "try_on"
+    # Production print assets. Deliberately separate from TRY_ON / EXPORT so a
+    # print package can never be confused with a visual AI preview.
+    PRINT_FILE = "print_file"
+    PRINT_PACKAGE = "print_package"
+    PORTFOLIO = "portfolio"
 
 
 class DesignStatus(StrEnum):
@@ -172,6 +177,8 @@ class BusinessType(StrEnum):
     FABRIC = "fabric"
     BRAND = "brand"
     ATELIER = "atelier"
+    DESIGNER = "designer"
+    MANUFACTURER = "manufacturer"
 
 
 class OrderStatus(StrEnum):
@@ -190,6 +197,40 @@ class QuoteStatus(StrEnum):
     ACCEPTED = "accepted"
     DECLINED = "declined"
     WITHDRAWN = "withdrawn"
+
+
+class ProductionStatus(StrEnum):
+    """Exact production workflow exposed to customers and workshops."""
+
+    ORDER_RECEIVED = "order_received"
+    QUOTE_PENDING = "quote_pending"
+    QUOTE_APPROVED = "quote_approved"
+    DESIGN_APPROVED = "design_approved"
+    PRODUCTION_PENDING = "production_pending"
+    PRINTING_IN_PROGRESS = "printing_in_progress"
+    QUALITY_CHECKING = "quality_checking"
+    READY_FOR_DELIVERY = "ready_for_delivery"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class PrintPackageStatus(StrEnum):
+    DRAFT = "draft"
+    IN_REVIEW = "in_review"
+    APPROVED = "approved"
+    CHANGES_REQUESTED = "changes_requested"
+
+
+class OfferingKind(StrEnum):
+    SERVICE = "service"
+    PRODUCT = "product"
+
+
+class PricingMode(StrEnum):
+    FIXED = "fixed"
+    FROM = "from"
+    PER_UNIT = "per_unit"
+    QUOTE = "quote"
 
 
 class NotificationKind(StrEnum):

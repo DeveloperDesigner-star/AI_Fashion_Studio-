@@ -129,6 +129,10 @@ export function SiteHeader() {
                       { to: '/profile', label: 'Profile & measurements' },
                       { to: '/outfits', label: 'Saved outfits' },
                       { to: '/orders', label: 'Requests & orders' },
+                      { to: '/print', label: 'Print packages' },
+                      ...(user.role === 'business' || user.role === 'admin'
+                        ? [{ to: '/business', label: 'Business dashboard' }]
+                        : []),
                       { to: '/settings', label: 'Settings' },
                       ...(user.role === 'admin' ? [{ to: '/admin', label: 'Admin dashboard' }] : []),
                     ].map((item) => (

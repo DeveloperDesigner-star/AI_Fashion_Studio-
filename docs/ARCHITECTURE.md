@@ -75,7 +75,8 @@ The browser therefore always talks to one origin and no secret ever reaches clie
 | `services/sizing.py` | Rule-based size recommendation from bust/waist/hips against a published-style chart; returns confidence, alternates and notes |
 | `services/avatar_params.py` | Derives proportions (head, shoulder, torso, leg, inseam) from height/weight/measurements |
 | `services/imaging.py` | Upload validation, EXIF transpose, resize, thumbnails, palette extraction, framing metrics, print sheets |
-| `services/print.py` | Print preparation: placement scaling, bleed/DPI metadata, proof generation |
+| `services/print_jobs.py` | Print packages: per-component PNGs, effective-DPI/colour/transparency reporting, local PDF writer (exact physical size, SMask), ZIP manifest |
+| `services/orders.py` | Ten-state production workflow: allowed transitions, actor rules, immutable `OrderEvent` audit trail |
 | `services/ai/registry.py` | Provider selection (Gemini → Groq → OpenAI-off → local), toggles, timeouts, quotas |
 | `services/ai/local_stylist.py` | Deterministic catalogue styling used when no provider is usable |
 | `services/audit.py` | Append-only audit entries for security-sensitive actions |
