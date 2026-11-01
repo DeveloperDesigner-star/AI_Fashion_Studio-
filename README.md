@@ -5,7 +5,7 @@ component-level garment editor, a WebGL fitting room, print preparation, and a q
 marketplace between clients and workshops.
 
 **Status: Phases 1–10 complete — full repository audit and production-readiness pass done on
-2026-10-30.** All gates are green: 200 backend tests, 180 frontend tests, 24 Playwright end-to-end
+2026-10-30, with mobile delivery and Vercel preparation updated 2026-11-01.** All gates are green: 200 backend tests, 180 frontend tests, 24 Playwright end-to-end
 tests, Ruff/ESLint/TypeScript clean, a production build, zero known Python dependency advisories and
 zero runtime npm advisories. (Eleven moderate advisories remain in the dev-only ESLint/minimatch
 toolchain; they are not shipped in the browser bundle.) The audit found and fixed a render-time navigation bug, duplicate React keys,
@@ -355,7 +355,8 @@ and retry boundary.
 
 ### Phase 10 verification (full audit & production readiness)
 
-Verified on 2026-10-30 against the live API, a fresh database and the Vite app:
+Verified on 2026-10-30 against the live API, a fresh database and the Vite app; the mobile/lazy-route
+and deployment work was re-verified on 2026-11-01:
 
 - **Gate:** `make check` is green — **200 backend tests**, **180 frontend tests** in 19 files,
   Ruff, ESLint `--max-warnings 0`, TypeScript and the Vite production build.
@@ -377,10 +378,11 @@ Verified on 2026-10-30 against the live API, a fresh database and the Vite app:
   passed with zero horizontal overflow. This is Chromium device emulation with SwiftShader, not a
   physical handset.
 - **Mobile delivery:** every route is now a lazy chunk with a loading skeleton and a friendly
-  retry boundary. The initial JS shell is **~100 KB gzip** (app + vendor) instead of ~230 KB, and
-  the **283.6 KB gzip** Three.js chunk is fetched only when a 3D view is opened. On a device that
-  reports ≤ 4 GB memory, a data-saver connection or 2G, the landing-page 3D preview is **opt-in**
-  with a “Load 3D preview” button; missing WebGL still falls back to the 2D illustration.
+  retry boundary. The initial JS shell is **~101 KB gzip** (app + shared UI) instead of ~230 KB, and
+  the **~284 KB gzip** 3D payload (a 248 KB renderer chunk plus avatar components) is fetched only
+  when a 3D view is opened. On a device that reports ≤ 4 GB memory, a data-saver connection or 2G,
+  the landing-page 3D preview is **opt-in** with a “Load 3D preview” button; missing WebGL still
+  falls back to the 2D illustration.
 - **Runtime defects fixed:** `LoginPage` called `navigate()` during render and accepted empty
   submissions; `ColorField` produced duplicate React keys; the fitting room, try-on, studio,
   accessories, settings, garment, profile and onboarding layouts overflowed at narrow widths because

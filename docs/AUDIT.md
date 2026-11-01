@@ -1,6 +1,7 @@
 # Phase 10 — full repository audit and production-readiness report
 
-**Date:** 2026-10-30  
+**Date:** 2026-10-30 (initial audit), updated 2026-11-01 for mobile delivery and Vercel preparation
+
 **Scope:** the whole repository at branch `arena/a062a679-ai-fashion-studio`  
 **Method:** code review, fresh-database migration/seed, static analysis, unit/integration suites,
 dependency audits, live API probes, Playwright journeys across 27 routes at desktop and 390 px, and
@@ -254,15 +255,16 @@ provider quality and GPU latency remain unmeasured here.
 
 | Asset | Raw | Gzip | When loaded |
 |---|---:|---:|---|
-| App `index` | 39.1 KB | 11.8 KB | First paint |
-| Vendor | 281.2 KB | 87.8 KB | First paint |
+| App entry (`index`) | 281.4 KB | 86.4 KB | First paint |
+| Shared UI/router | 40.6 KB | 14.7 KB | First paint |
 | CSS | 62.2 KB | 11.3 KB | First paint |
 | Per-route chunks | 4–78 KB each | 1.3–16 KB each | When the route opens |
-| `three` chunk | 1,053.9 KB | 283.6 KB | First 3D view only |
+| 3D renderer chunk | 933.7 KB | 248.0 KB | First 3D view only |
+| 3D avatar components | 42.2–73.4 KB | 13.2–22.0 KB | First 3D view only |
 
-The initial JS shell is now about **100 KB gzip** instead of about 230 KB, because `App.tsx` lazy-loads
-every route and the landing page lazy-loads `AvatarScene`. The **283.6 KB gzip** Three.js chunk is
-loaded only when a 3D view is opened. On a device reporting ≤ 4 GB memory, a data-saver connection or
+The initial JS shell is now about **101 KB gzip** instead of about 230 KB, because `App.tsx`
+lazy-loads every route and the landing page lazy-loads `AvatarScene`. The **~284 KB gzip** of 3D
+code (a 248 KB renderer chunk plus avatar components) is loaded only when a 3D view is opened. On a device reporting ≤ 4 GB memory, a data-saver connection or
 2G, the landing hero asks before loading 3D. Each route has a loading skeleton and an error boundary
 with a retry action, so a failed chunk on a flaky phone connection does not produce a blank screen.
 Assets are content-hashed and cached immutably by nginx and Vercel; `index.html` is `no-cache`. The
@@ -308,7 +310,7 @@ do **not** claim they ran here. A fresh SQLite migration/seed was executed succe
 | CatVTON is non-commercial and GPU-only | Business | Do not enable for commercial service without licence review |
 | No email verification/password reset | Low | In-product notices; add a mail provider before public self-service |
 | No payments/escrow | Product | Money remains off-platform by design |
-| Three.js chunk remains 283.6 KB gzip on 3D routes | Low | Route-level lazy loading and opt-in on low-memory devices; further mesh compression is future work |
+| 3D payload remains ~284 KB gzip on 3D routes | Low | Route-level lazy loading and opt-in on low-memory devices; further mesh compression is future work |
 | Retention/backup processes depend on the operator | Medium | Assign owners and test restores |
 
 ### Release decision
