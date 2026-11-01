@@ -1,5 +1,5 @@
 import { Component, Suspense, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { LoadingBlock } from '@/components/ui/Primitives'
 
 function PageLoading() {
@@ -58,8 +58,9 @@ class PageErrorBoundary extends Component<{ children: ReactNode }, { failed: boo
  * message instead of a blank screen.
  */
 export function AsyncBoundary({ children }: { children: ReactNode }) {
+  const location = useLocation()
   return (
-    <PageErrorBoundary>
+    <PageErrorBoundary key={location.pathname}>
       <Suspense fallback={<PageLoading />}>{children}</Suspense>
     </PageErrorBoundary>
   )
