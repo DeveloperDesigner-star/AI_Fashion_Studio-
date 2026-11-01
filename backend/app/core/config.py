@@ -48,6 +48,22 @@ class Settings(BaseSettings):
     db_echo: bool = False
     db_pool_size: int = 5
     db_max_overflow: int = 10
+    # Serverless platforms (and Supabase's transaction pooler) should let the
+    # external pooler own connections; a local SQLAlchemy pool only wastes them.
+    db_use_null_pool: bool = False
+
+    # ---- Supabase ----
+    # The backend never uses the publishable key to access Postgres. It is kept
+    # for projects that later add the Supabase JS client; it must never be
+    # treated as a database password or a service-role secret.
+    supabase_url: str = ""
+    supabase_publishable_key: str = ""
+    # Trusted server-only key (sb_secret_... or legacy service_role). Required
+    # only when MEDIA_STORAGE=supabase.
+    supabase_secret_key: str = ""
+    supabase_storage_bucket: str = "media"
+    media_storage: Literal["local", "supabase"] = "local"
+    supabase_timeout_seconds: float = 30.0
 
     # ---- Uploads ----
     media_root: str = "./var/uploads"
@@ -126,6 +142,14 @@ class Settings(BaseSettings):
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @field_validator("supabase_url")
+    @classmethod
+    def _normalise_supabase_url(cls, value: str) -> str:
+        value = value.strip()
+        if value and not value.startswith("https://"):
+            raise ValueError("SUPABASE_URL must be an https:// project URL")
+        return value.rstrip("/")
 
     @field_validator("database_url")
     @classmethod

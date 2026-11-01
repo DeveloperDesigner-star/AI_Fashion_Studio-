@@ -213,7 +213,9 @@ numbers are not representative of a phone.
 ## 10. Mobile preview and production hosting
 
 - The sandbox live preview is the fastest phone-accessible path; see [MOBILE.md](MOBILE.md).
-- For a permanent Vercel frontend plus a separate FastAPI/PostgreSQL backend, see
-  [VERCEL.md](VERCEL.md). The Vercel build intentionally fails unless `VITE_API_BASE_URL` is an
-  absolute HTTPS URL ending in `/api/v1`.
-- Do not assume a Vercel deployment includes the API, database or private upload storage.
+- For a permanent deployment, use two Vercel projects (frontend + native Python backend) and
+  Supabase PostgreSQL/private Storage; see [VERCEL.md](VERCEL.md) and [SUPABASE.md](SUPABASE.md).
+  The Vercel build intentionally fails unless `VITE_API_BASE_URL` is an absolute HTTPS URL ending in
+  `/api/v1`.
+- A frontend deployment does not include the API, database or private upload storage. Deploy and
+  verify each piece; a 4.5 MB Vercel request limit caps uploads at `MAX_UPLOAD_MB=4`.

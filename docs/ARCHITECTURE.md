@@ -400,11 +400,14 @@ The platform intentionally does not process payments — settlement happens betw
 - The API is stateless apart from uploads; scale horizontally behind a load balancer, but move rate
   limiting and quotas to a shared store first.
 - Refresh cookies normally require a single cookie domain. For the prepared Vercel split, the SPA
-  and API are different sites: set `CORS_ORIGINS` to the Vercel origin and
+  and API are different sites: set `CORS_ORIGINS` to the frontend origin and
   `COOKIE_SAMESITE=none` + `COOKIE_SECURE=true`; the API remains the cookie’s host.
-- Vercel hosts only `frontend/dist`. FastAPI, PostgreSQL, migrations and the private uploads volume
-  are deployed separately; `VITE_API_BASE_URL` must be the public absolute `/api/v1` URL and the
-  build guard rejects a relative/localhost value. See `docs/VERCEL.md`.
+- Vercel can host both the SPA and the FastAPI app as separate projects. The backend uses the
+  native Python 3.12 runtime (`[tool.vercel] entrypoint = "app.main:app"`), Supabase PostgreSQL via
+  the transaction pooler with `NullPool`, and private Supabase Storage. `VITE_API_BASE_URL` must be
+  the backend's public absolute `/api/v1` URL; the build guard rejects a relative/localhost value.
+  Migrations run through a manual GitHub Actions workflow on the session/direct connection. See
+  `docs/VERCEL.md` and `docs/SUPABASE.md`.
 - Health endpoint: `GET /api/v1/health` (also used by container healthchecks).
 - Migrations run from the entrypoint before workers start; run them once per release in orchestrated
   environments.

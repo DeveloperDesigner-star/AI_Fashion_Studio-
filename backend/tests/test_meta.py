@@ -15,6 +15,7 @@ def test_root_and_health(client: TestClient) -> None:
     assert body["status"] == "ok"
     assert body["database"]["ok"] is True
     assert body["media_root_writable"] is True
+    assert body["media_storage"] in {"local", "supabase"}
     assert body["environment"] == "test"
 
 

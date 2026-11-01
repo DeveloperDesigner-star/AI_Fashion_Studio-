@@ -24,7 +24,7 @@ python -c "import secrets;print(secrets.token_urlsafe(64))"   # SECRET_KEY
 | `DATABASE_URL` | PostgreSQL is the supported production database |
 | `CORS_ORIGINS` | Must be the real public origin if the browser calls the API directly; do not use `*` |
 | `COOKIE_SECURE=true` | Required when the public site is HTTPS, so the refresh cookie cannot travel in clear text |
-| `MEDIA_ROOT` | Persistent volume path for private uploads |
+| `MEDIA_ROOT` | Local/private cache path for uploads; on serverless use `/tmp/uploads` and set `MEDIA_STORAGE=supabase` |
 
 `APP_ENV=staging` behaves like development for docs and headers; only the literal value `production`
 turns those protections on.
@@ -67,22 +67,34 @@ via `pwdlib`. Refresh tokens are SHA-256 hashed at rest.
 | `DB_ECHO` | `false` | SQL logging; keep off in production |
 | `DB_POOL_SIZE` | `5` | SQLAlchemy pool per worker |
 | `DB_MAX_OVERFLOW` | `10` | Temporary extra connections |
+| `DB_USE_NULL_POOL` | `false` | Use `NullPool` for serverless hosts. Automatically enabled when `VERCEL` is set or the URL uses the Supabase transaction pooler on port 6543 |
 
-`alembic upgrade head` is the only supported way to create or upgrade a production schema. Eight
+`alembic upgrade head` is the only supported way to create or upgrade a production schema. Nine
 revisions are committed. The container entrypoint runs migrations on every start; that is safe but
 means the database account needs DDL permission. For stricter deployments, run migrations as a
 separate release job and disable the entrypoint step.
 
 SQLite is supported for tests and demos, not for concurrent production traffic.
 
+On Vercel, point `DATABASE_URL` at the **Supabase transaction pooler** (port 6543) and leave
+`DB_USE_NULL_POOL=true`. Run `alembic upgrade head` through the **session pooler or direct**
+connection on port 5432, not through the transaction pooler. Supabase's direct host is IPv6-only;
+use the session pooler from IPv4-only CI runners. See [SUPABASE.md](SUPABASE.md).
+
 ## Uploads and private media
 
 | Variable | Default | Notes |
 |---|---|---|
-| `MEDIA_ROOT` | `./var/uploads` | Must be a persistent volume; relative paths resolve against `backend/` |
+| `MEDIA_ROOT` | `./var/uploads` | Local write/cache path; relative paths resolve against `backend/`. On Vercel use `/tmp/uploads` (ephemeral) |
 | `MAX_UPLOAD_MB` | `8` | Also keep the nginx `client_max_body_size` at or above this value |
 | `MAX_IMAGE_PIXELS` | `24000000` | Pillow decompression-bomb guard |
 | `UPLOAD_RETENTION_DAYS` | `90` | Reported in the admin security view; see the retention caveat below |
+| `MEDIA_STORAGE` | `local` | `local` = filesystem; `supabase` = durable private Supabase Storage |
+| `SUPABASE_URL` | empty | Project URL, e.g. `https://<ref>.supabase.co`; HTTPS only, no trailing slash |
+| `SUPABASE_PUBLISHABLE_KEY` | empty | Public client key; not read by the current backend |
+| `SUPABASE_SECRET_KEY` | empty | Server-only `sb_secret_...`/service-role key; required when `MEDIA_STORAGE=supabase` |
+| `SUPABASE_STORAGE_BUCKET` | `media` | Private bucket name |
+| `SUPABASE_TIMEOUT_SECONDS` | `30` | Storage HTTP timeout |
 
 Allowed input types are JPEG, PNG and WebP. Uploaded images are normalised (EXIF transpose, RGB,
 resize, thumbnail) and served through authenticated endpoints; no public uploads directory is
@@ -162,10 +174,11 @@ limiter is required before horizontal scaling.
 Only `VITE_*` values are exposed to browser code. Do not put API keys, worker tokens or database
 URLs behind a `VITE_` name.
 
-When the frontend and API are on different sites (Vercel + separate backend), set
-`COOKIE_SAMESITE=none` and `COOKIE_SECURE=true` on the API and add the exact Vercel origin to
-`CORS_ORIGINS`. The Vercel build guard refuses a relative or localhost API URL. See
-[VERCEL.md](VERCEL.md).
+When the frontend and API are on different sites (a Vercel frontend + Vercel backend on another
+domain), set `COOKIE_SAMESITE=none` and `COOKIE_SECURE=true` on the API and add the exact frontend
+origin to `CORS_ORIGINS`. The Vercel build guard refuses a relative or localhost API URL. Vercel
+Functions have a ~4.5 MB request limit, so set `MAX_UPLOAD_MB=4` there. See
+[VERCEL.md](VERCEL.md) and [SUPABASE.md](SUPABASE.md).
 
 ## Container and process variables
 

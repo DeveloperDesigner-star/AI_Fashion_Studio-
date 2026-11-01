@@ -301,6 +301,12 @@ export function TryOnPage() {
     queryKey: qk.tryOnSessions,
     queryFn: fetchers.tryOnSessions,
   })
+  const publicConfigQuery = useQuery({
+    queryKey: qk.config,
+    queryFn: fetchers.config,
+    staleTime: 300_000,
+  })
+  const maxUploadMb = publicConfigQuery.data?.limits.max_upload_mb ?? 8
 
   const styleGender = profileQuery.data?.style_gender ?? 'womenswear'
   const avatars = useMemo(() => avatarsQuery.data ?? [], [avatarsQuery.data])
@@ -522,8 +528,8 @@ export function TryOnPage() {
       toast.error('Unsupported file', 'Choose a JPEG, PNG or WebP photo.')
       return
     }
-    if (file.size > 8 * 1024 * 1024) {
-      toast.error('Photo too large', 'Use an image under 8 MB.')
+    if (file.size > maxUploadMb * 1024 * 1024) {
+      toast.error('Photo too large', `Use an image under ${maxUploadMb} MB.`)
       return
     }
     setUploading(true)

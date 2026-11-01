@@ -33,6 +33,10 @@ def health(db: DbSession) -> dict[str, Any]:
         "version": APP_VERSION,
         "environment": settings.app_env,
         "database": {"ok": database_ok, "driver": backend, "error": database_error},
+        "media_storage": settings.media_storage,
+        "media_bucket": (
+            settings.supabase_storage_bucket if settings.media_storage == "supabase" else None
+        ),
         "media_root_writable": _media_writable(),
     }
 

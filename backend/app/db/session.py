@@ -6,21 +6,34 @@ development and the automated test-suite. Both are exercised in CI.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, event
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.config import settings
 
 _is_sqlite = settings.database_url.startswith("sqlite")
+_database_url = make_url(settings.database_url)
+# Supabase's transaction pooler listens on 6543. It already pools connections,
+# so a SQLAlchemy pool in front of it wastes server slots and can hold
+# transaction-mode sessions open. Vercel also sets VERCEL=1 automatically.
+_use_null_pool = (
+    settings.db_use_null_pool
+    or bool(os.getenv("VERCEL"))
+    or (_database_url.port == 6543)
+)
 
 engine_kwargs: dict = {"echo": settings.db_echo, "future": True, "pool_pre_ping": True}
 if _is_sqlite:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
+elif _use_null_pool:
+    engine_kwargs["poolclass"] = NullPool
 else:
     engine_kwargs.update(
         pool_size=settings.db_pool_size,

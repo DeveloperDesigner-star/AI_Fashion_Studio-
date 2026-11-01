@@ -262,6 +262,17 @@ vi.mock('@/lib/queries', async (importOriginal) => {
       ),
       tryOnCapabilities: vi.fn(() => Promise.resolve(fixture.capabilities)),
       tryOnSessions: vi.fn(() => Promise.resolve({ items: [fixture.session], total: 1 })),
+      config: vi.fn(() =>
+        Promise.resolve({
+          app_name: 'AI Fashion Studio',
+          version: 'test',
+          environment: 'test',
+          limits: { max_upload_mb: 4 },
+          features: {},
+          providers: [],
+          privacy: {},
+        }),
+      ),
     },
   }
 })

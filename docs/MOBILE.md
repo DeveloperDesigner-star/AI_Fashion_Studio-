@@ -111,6 +111,8 @@ personal ID; the sandbox is a demo.
 | Uploads fail | Use an image under 8 MB and allow Chrome to access files/photos |
 | API errors | The Vite preview proxies to the sandbox API; both preview processes must be running |
 
-For a permanent, production-style URL, see [VERCEL.md](VERCEL.md). A Vercel frontend alone is not
-enough: the Python API, PostgreSQL and private file storage must be deployed separately and their
-public HTTPS URL configured in `VITE_API_BASE_URL`.
+For a permanent, production-style URL, see [VERCEL.md](VERCEL.md) and
+[SUPABASE.md](SUPABASE.md). A Vercel frontend alone is not enough: deploy the FastAPI app as a
+second Vercel project (or a container host), connect Supabase PostgreSQL and private Storage, then
+put that public HTTPS API URL in `VITE_API_BASE_URL`. Vercel's 4.5 MB request limit means uploads
+there are capped at 4 MB.

@@ -36,3 +36,30 @@ def test_production_accepts_a_random_secret_and_exact_origin(monkeypatch: pytest
     monkeypatch.setattr(settings, "cors_origins", "https://studio.example.com")
     monkeypatch.setattr(settings, "cookie_secure", True)
     validate_production_settings()
+
+
+def _valid_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "secret_key", "a" * 64)
+    monkeypatch.setattr(settings, "cors_origins", "https://studio.example.com")
+    monkeypatch.setattr(settings, "cookie_secure", True)
+
+
+def test_production_rejects_supabase_storage_without_a_server_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _valid_production(monkeypatch)
+    monkeypatch.setattr(settings, "media_storage", "supabase")
+    monkeypatch.setattr(settings, "supabase_url", "https://studio.supabase.co")
+    monkeypatch.setattr(settings, "supabase_secret_key", "")
+    with pytest.raises(RuntimeError, match="SUPABASE_SECRET_KEY"):
+        validate_production_settings()
+
+
+def test_production_accepts_private_supabase_storage(monkeypatch: pytest.MonkeyPatch) -> None:
+    _valid_production(monkeypatch)
+    monkeypatch.setattr(settings, "media_storage", "supabase")
+    monkeypatch.setattr(settings, "supabase_url", "https://studio.supabase.co")
+    monkeypatch.setattr(settings, "supabase_secret_key", "sb_secret_test")
+    monkeypatch.setattr(settings, "supabase_storage_bucket", "media")
+    validate_production_settings()

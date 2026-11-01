@@ -12,15 +12,19 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import io
+import logging
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
+import httpx
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.core.config import settings
 
 ALLOWED_FORMATS = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
+logger = logging.getLogger(__name__)
 
 
 class UploadError(Exception):
@@ -55,13 +59,130 @@ def _media_root() -> Path:
     return root
 
 
-def path_for(storage_key: str) -> Path:
-    """Resolve a storage key safely inside MEDIA_ROOT."""
-    root = _media_root().resolve()
+def _safe_path(root: Path, storage_key: str) -> Path:
+    root = root.resolve()
     candidate = (root / storage_key).resolve()
     if not str(candidate).startswith(str(root)):
         raise UploadError("Invalid media path", code="invalid_path")
     return candidate
+
+
+def _local_path(storage_key: str) -> Path:
+    return _safe_path(_media_root(), storage_key)
+
+
+def _cache_path(storage_key: str) -> Path:
+    return _safe_path(_media_root() / ".remote-cache", storage_key)
+
+
+def _supabase_enabled() -> bool:
+    return settings.media_storage == "supabase"
+
+
+def _supabase_object_url(storage_key: str, *, authenticated: bool = False) -> str:
+    bucket = quote(settings.supabase_storage_bucket, safe="")
+    key = quote(storage_key, safe="/")
+    route = "object/authenticated" if authenticated else "object"
+    return f"{settings.supabase_url.rstrip('/')}/storage/v1/{route}/{bucket}/{key}"
+
+
+def _supabase_headers(content_type: str | None = None) -> dict[str, str]:
+    # The service-role/secret key bypasses Storage RLS. It must never reach the
+    # browser and must never be used as a Postgres password.
+    headers = {
+        "apikey": settings.supabase_secret_key,
+        "Authorization": f"Bearer {settings.supabase_secret_key}",
+    }
+    if content_type:
+        headers["Content-Type"] = content_type
+    return headers
+
+
+def _write_bytes(storage_key: str, data: bytes, content_type: str) -> None:
+    """Persist bytes locally or in the private Supabase Storage bucket."""
+
+    target = _cache_path(storage_key) if _supabase_enabled() else _local_path(storage_key)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+
+    if not _supabase_enabled():
+        return
+    try:
+        response = httpx.post(
+            _supabase_object_url(storage_key),
+            content=data,
+            headers={**_supabase_headers(content_type), "x-upsert": "true"},
+            timeout=settings.supabase_timeout_seconds,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        with contextlib.suppress(OSError):
+            target.unlink(missing_ok=True)
+        raise UploadError(
+            "Private media storage is unavailable. Please try again.",
+            code="storage_unavailable",
+        ) from exc
+
+
+def _download_from_supabase(storage_key: str, target: Path) -> bool:
+    try:
+        response = httpx.get(
+            _supabase_object_url(storage_key, authenticated=True),
+            headers=_supabase_headers(),
+            timeout=settings.supabase_timeout_seconds,
+        )
+    except httpx.HTTPError as exc:
+        raise UploadError(
+            "Private media storage is unavailable. Please try again.",
+            code="storage_unavailable",
+        ) from exc
+    if response.status_code == 404:
+        return False
+    try:
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise UploadError(
+            "Private media storage is unavailable. Please try again.",
+            code="storage_unavailable",
+        ) from exc
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(target.name + ".tmp")
+    temporary.write_bytes(response.content)
+    temporary.replace(target)
+    return True
+
+
+def _delete_from_supabase(storage_key: str) -> None:
+    try:
+        response = httpx.delete(
+            _supabase_object_url(storage_key),
+            headers=_supabase_headers(),
+            timeout=settings.supabase_timeout_seconds,
+        )
+        if response.status_code >= 500:
+            logger.warning("Supabase Storage delete failed with %s", response.status_code)
+    except httpx.HTTPError as exc:
+        # Deletion is best-effort: the object stays private and unreachable
+        # through the API because its database row is removed.
+        logger.warning("Supabase Storage delete failed: %s", exc.__class__.__name__)
+
+
+def path_for(storage_key: str) -> Path:
+    """Resolve a storage key, downloading a private Supabase object to cache.
+
+    All existing callers expect a local ``Path``. Supabase mode therefore keeps a
+    short-lived local cache under ``MEDIA_ROOT/.remote-cache`` and streams the
+    object into it on first read. The bucket itself stays private; only the
+    authenticated FastAPI media endpoint serves these bytes.
+    """
+
+    if not _supabase_enabled():
+        return _local_path(storage_key)
+    target = _cache_path(storage_key)
+    if target.exists():
+        return target
+    _download_from_supabase(storage_key, target)
+    return target
 
 
 def save_image(
@@ -127,18 +248,20 @@ def save_image(
         raise UploadError("The image could not be processed.", code="processing_failed") from exc
 
     storage_key = f"{kind}/{uuid.uuid4().hex}.jpg"
-    target = path_for(storage_key)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(normalized)
+    _write_bytes(storage_key, normalized, "image/jpeg")
 
     thumbnail_key = None
     if make_thumbnail:
-        thumb = Image.open(io.BytesIO(normalized))
-        thumb.thumbnail((640, 640), Image.Resampling.LANCZOS)
+        with Image.open(io.BytesIO(normalized)) as thumb:
+            thumb.thumbnail((640, 640), Image.Resampling.LANCZOS)
+            thumb_buffer = io.BytesIO()
+            thumb.save(thumb_buffer, format="WEBP", quality=82, method=4)
         thumb_key = f"{kind}/thumbs/{uuid.uuid4().hex}.webp"
-        thumb_target = path_for(thumb_key)
-        thumb_target.parent.mkdir(parents=True, exist_ok=True)
-        thumb.save(thumb_target, format="WEBP", quality=82, method=4)
+        try:
+            _write_bytes(thumb_key, thumb_buffer.getvalue(), "image/webp")
+        except Exception:
+            delete_file(storage_key)
+            raise
         thumbnail_key = thumb_key
 
     return StoredImage(
@@ -176,9 +299,7 @@ def save_binary(
     if ext not in BINARY_TYPES:
         raise UploadError("Unsupported generated file type.", code="bad_extension")
     storage_key = f"{kind}/{uuid.uuid4().hex}.{ext}"
-    target = path_for(storage_key)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(data)
+    _write_bytes(storage_key, data, mime_type or BINARY_TYPES[ext])
     return StoredBlob(
         storage_key=storage_key,
         mime_type=mime_type or BINARY_TYPES[ext],
@@ -190,8 +311,13 @@ def save_binary(
 def delete_file(storage_key: str | None) -> None:
     if not storage_key:
         return
+    if _supabase_enabled():
+        _delete_from_supabase(storage_key)
+        with contextlib.suppress(UploadError, OSError):
+            _cache_path(storage_key).unlink(missing_ok=True)
+        return
     with contextlib.suppress(UploadError, OSError):  # pragma: no cover - defensive
-        path_for(storage_key).unlink(missing_ok=True)
+        _local_path(storage_key).unlink(missing_ok=True)
 
 
 def sanitize_filename(name: str) -> str:
@@ -250,18 +376,22 @@ def save_artwork(
         raise UploadError("The image could not be processed.", code="processing_failed") from exc
 
     storage_key = f"{kind}/art/{uuid.uuid4().hex}.png"
-    target = path_for(storage_key)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(normalized)
+    _write_bytes(storage_key, normalized, "image/png")
 
     thumbnail_key = None
     if make_thumbnail:
-        thumb = Image.open(io.BytesIO(normalized)).convert("RGBA")
-        thumb.thumbnail((640, 640), Image.Resampling.LANCZOS)
+        with Image.open(io.BytesIO(normalized)) as thumb:
+            rgba = thumb.convert("RGBA")
+            rgba.thumbnail((640, 640), Image.Resampling.LANCZOS)
+            thumb_buffer = io.BytesIO()
+            rgba.save(thumb_buffer, format="WEBP", quality=84, method=4)
         thumb_key = f"{kind}/art/thumbs/{uuid.uuid4().hex}.webp"
-        thumb_target = path_for(thumb_key)
-        thumb_target.parent.mkdir(parents=True, exist_ok=True)
-        thumb.save(thumb_target, format="WEBP", quality=84, method=4)
+        try:
+            _write_bytes(thumb_key, thumb_buffer.getvalue(), "image/webp")
+        except Exception:
+            delete_file(storage_key)
+            raise
+        thumbnail_key = thumb_key
 
     return StoredImage(
         storage_key=storage_key,
