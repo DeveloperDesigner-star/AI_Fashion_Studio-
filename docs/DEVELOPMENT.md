@@ -67,12 +67,18 @@ docs/                   installation, development, architecture, API, deployment
 - **Browser journeys:** install Chromium, create a throwaway SQLite database, seed the catalogue,
   start Uvicorn on `:8000`, then run all 24 Playwright tests with `--workers=1`.
 
-The browser job uses SwiftShader flags so the 3D tests run on a headless runner. A failure uploads
-the Playwright report and prints the API log. Do not merge a PR with a red required job.
+The browser job uses SwiftShader flags so the 3D tests run on a headless runner, and raises the auth
+rate limit for the seeded test traffic. A failure uploads the Playwright report and prints the API
+log. Do not merge a PR with a red required job.
 
 ---
 
 ## Backend conventions
+
+**Transactions.** `get_db` attaches the request session to `request.state.db`, and
+`CommitSessionMiddleware` commits it when the response starts. FastAPI closes yield dependencies
+*after* sending a response, so relying on teardown would let a follow-up request race the commit.
+Do not move the commit back into `get_db` or call `db.commit()` at the end of a handler.
 
 **Routing.** Each resource has a module under `app/api/v1/endpoints/`, registered in
 `app/api/v1/router.py` with a prefix. Paths are nouns, verbs come from the HTTP method.

@@ -61,7 +61,7 @@ environmental limits are recorded rather than papered over.
 
 | Gate | Result |
 |---|---|
-| Backend tests | **205 passed** |
+| Backend tests | **206 passed** |
 | Frontend tests | **180 passed** in 19 files |
 | Ruff | clean |
 | ESLint (`--max-warnings 0`, `src` + `e2e`) | clean |
@@ -104,7 +104,7 @@ independently of this repository.
 
 **Result: PASS.**
 
-- 205 backend tests cover auth/session rotation, profiles and measurements, catalogue, designs and
+- 206 backend tests cover auth/session rotation, profiles and measurements, catalogue, designs and
   revisions, outfits, media, avatars and consent, AI fallback/quotas, try-on worker contracts, print
   packages, marketplace orders, administration, privacy and deletion workflows.
 - The live OpenAPI document exposes **186 operations across 159 paths**, all mounted under
@@ -183,13 +183,14 @@ Highlights:
 and Firefox on physical hardware, and touch gestures beyond Playwright emulation. These remain a
 manual release task.
 
-**Sandbox-reset note:** the 24/24 browser run above was recorded before the final dependency-security
-and lazy-route hardening. The sandbox was then reset and its Chromium binary/libraries were not
-available for another browser run. The final commit was re-verified with **205 backend tests, 180
-frontend tests, TypeScript/ESLint/Ruff, a production build, pip-audit/npm runtime audit and live API
-probes** (login, role boundary, private media ownership, upload, rule-based AI, try-on unavailable,
-and preview-proxy auth refresh). Re-run the Playwright suite in staging or on a developer machine
-with `npm run e2e:install` before public release; do not treat this note as a substitute.
+**Final browser verification:** the 24/24 browser run was repeated on the final commit (`1fcd640`)
+in the new GitHub Actions workflow, where the **Browser journeys (Playwright)** job passed all 24
+tests in 3m19s on headless Chromium (`--workers=1`, 2 retries). The same workflow passed again on
+`main` after merge (`d40d873`). The agent sandbox itself lacks Chromium's system NSS libraries, so CI
+is the authoritative browser gate; the 206 backend tests, 180 frontend tests,
+TypeScript/ESLint/Ruff, production build, pip-audit/npm runtime audit and live API probes were also
+re-run locally. Real hardware, touch and GPU behaviour still need the manual release pass described
+above.
 
 ---
 
