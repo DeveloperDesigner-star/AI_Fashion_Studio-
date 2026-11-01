@@ -62,7 +62,13 @@ def _media_root() -> Path:
 def _safe_path(root: Path, storage_key: str) -> Path:
     root = root.resolve()
     candidate = (root / storage_key).resolve()
-    if not str(candidate).startswith(str(root)):
+    # ``startswith`` would accept a sibling such as ``/media-evil`` when the
+    # root is ``/media``. ``relative_to`` compares whole path components.
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        raise UploadError("Invalid media path", code="invalid_path") from None
+    if candidate == root:
         raise UploadError("Invalid media path", code="invalid_path")
     return candidate
 
@@ -77,6 +83,22 @@ def _cache_path(storage_key: str) -> Path:
 
 def _supabase_enabled() -> bool:
     return settings.media_storage == "supabase"
+
+
+def storage_configured() -> bool:
+    """Whether the selected backend has the settings it needs.
+
+    This is a configuration check only; it intentionally makes no network call
+    from the health endpoint.
+    """
+
+    if not _supabase_enabled():
+        return True
+    return bool(
+        settings.supabase_url
+        and settings.supabase_secret_key
+        and settings.supabase_storage_bucket
+    )
 
 
 def _supabase_object_url(storage_key: str, *, authenticated: bool = False) -> str:

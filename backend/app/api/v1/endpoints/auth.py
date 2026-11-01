@@ -54,6 +54,23 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
     )
 
 
+def _require_trusted_origin(request: Request) -> None:
+    """Reject cookie-authenticated browser calls from an unconfigured origin.
+
+    Browsers omit Origin on some same-origin requests, so absence is allowed for
+    native clients. A present Origin must exactly match the CORS allow-list.
+    """
+
+    origin = request.headers.get("origin")
+    if origin is None:
+        return
+    if origin.rstrip("/") not in settings.cors_origin_list:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "untrusted_origin", "message": "Request origin is not allowed."},
+        )
+
+
 def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(
         key=REFRESH_COOKIE,
@@ -167,6 +184,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DbSes
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh(request: Request, response: Response, db: DbSession) -> TokenResponse:
+    _require_trusted_origin(request)
     token = request.cookies.get(REFRESH_COOKIE)
     if not token:
         raise HTTPException(
@@ -209,6 +227,7 @@ def _as_aware(value: datetime) -> datetime:
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(request: Request, response: Response, db: DbSession) -> Response:
+    _require_trusted_origin(request)
     token = request.cookies.get(REFRESH_COOKIE)
     if token:
         stored = db.scalar(select(RefreshToken).where(RefreshToken.token_hash == refresh_token_hash(token)))

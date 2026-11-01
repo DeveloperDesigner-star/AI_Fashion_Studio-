@@ -60,6 +60,11 @@ A healthy response looks like:
 {"status":"ok","version":"1.0.0","environment":"production","database":{"ok":true,...}}
 ```
 
+A `503` means the API is running but cannot reach/authenticate to PostgreSQL; the
+`database.error` category and the `sqlstate` identify the class of failure without
+exposing the connection string. Fix the URL/password in the service environment, not
+the health check.
+
 Copy the service URL (without `/api/v1`) into your notes. This is the backend URL
 used by Vercel.
 

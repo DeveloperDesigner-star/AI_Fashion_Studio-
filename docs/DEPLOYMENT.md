@@ -101,7 +101,7 @@ skipping it makes releases faster and avoids unintended catalogue changes.
 
 | Item | Production value | Why |
 |---|---|---|
-| `APP_ENV` | `production` | Disables `/docs`, `/openapi.json`, debug logging; enables HSTS/CSP on API JSON |
+| `APP_ENV` | `production` | Disables debug logging; enables HSTS/CSP. `/docs`, `/redoc` and `/openapi.json` stay available unless `API_DOCS_ENABLED=false` |
 | `SECRET_KEY` | 64-byte random value | JWT signing; production refuses a placeholder or a key under 32 characters |
 | `COOKIE_SECURE` | `true` | Refresh cookie must not cross plain HTTP |
 | `CORS_ORIGINS` | exact public origin | No wildcard; credentials are enabled |
@@ -149,7 +149,9 @@ Terminate TLS at the edge and forward to nginx over a private network. The shipp
 
 When you put another proxy in front:
 
-1. Pass `Host`, `X-Forwarded-For` and `X-Forwarded-Proto`.
+1. Pass `Host`, `X-Forwarded-For` and `X-Forwarded-Proto`, and set `TRUST_PROXY_HEADERS=true` so
+   rate limits and auth logs use the nearest client hop. Never enable it when the API is directly
+   reachable, because callers can forge the header.
 2. Set `--proxy-headers`/`--forwarded-allow-ips` appropriately if uvicorn is directly exposed.
 3. Keep TLS termination in front of **both** the SPA and `/api`.
 4. Add HSTS at the TLS terminator (the base compose nginx is also used over plain HTTP locally, so
@@ -190,10 +192,10 @@ The app does not automate upload or AI-log retention. See `docs/CONFIGURATION.md
 |---|---|---|
 | Liveness | `GET /health` | `200` with `{"status":"ok"}` |
 | Root metadata | `GET /` | `200` with app name, version and API prefix |
-| Readiness through the proxy | `GET /api/v1/health` | `200` |
+| Readiness through the proxy | `GET /api/v1/health` | `200`; `503` means the DB check failed and the body carries a safe category |
 | Public config | `GET /api/v1/meta/config` | `200`, no secrets |
 | SPA | `GET /` | `200` HTML |
-| Database | API logs / `GET /api/v1/health` | no connection errors |
+| Database | `GET /api/v1/health` | `database.ok: true`; logs contain only `category`/`sqlstate` |
 | Disk | uploads volume | free space above your alert threshold |
 | AI | `/api/v1/ai/capabilities` (admin/auth as appropriate) | providers report `usable` honestly |
 | Try-on | `/api/v1/try-on/capabilities` | `available: false` is a valid healthy state when no worker is configured |

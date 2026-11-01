@@ -108,7 +108,8 @@ independently of this repository.
   revisions, outfits, media, avatars and consent, AI fallback/quotas, try-on worker contracts, print
   packages, marketplace orders, administration, privacy and deletion workflows.
 - The live OpenAPI document exposes **186 operations across 159 paths**, all mounted under
-  `/api/v1`; `/docs` and `/openapi.json` are disabled when `APP_ENV=production`.
+  `/api/v1`; at the time of this audit `/docs` and `/openapi.json` were disabled in production. The
+  current code enables them by default and supports `API_DOCS_ENABLED=false`.
 - Errors use one envelope (`detail.code`, `detail.message`, optional fields). Validation failures
   are normalised; unexpected exceptions return a generic `internal_error` without leaking internals.
 - Request IDs and response-time headers are present on every response; slow requests (> 1.5 s) are

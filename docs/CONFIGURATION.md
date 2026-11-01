@@ -39,7 +39,9 @@ turns those protections on.
 | `APP_ENV` | `development` | `development`, `staging`, `production` or `test` |
 | `DEBUG` | `true` | Set `false` in production; debug may log request details |
 | `API_V1_PREFIX` | `/api/v1` | Changing it requires a matching frontend proxy |
-| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated exact origins; credentials are allowed |
+| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated exact origins; credentials are allowed. Trailing slashes are normalised and duplicates removed. Required in production |
+| `API_DOCS_ENABLED` | `true` | Serves `/docs`, `/redoc`, `/openapi.json`. Set `false` to hide the UI and schema |
+| `TRUST_PROXY_HEADERS` | `false` | Use the nearest `X-Forwarded-For` hop for rate limits/auth logs. Enable only when nginx/Render overwrites the header. Vercel is detected via `VERCEL=1` |
 | `PUBLIC_API_URL` | `http://localhost:8000` | Reserved for deployment tooling; generated links are currently relative |
 
 ## Security and sessions
@@ -68,6 +70,8 @@ via `pwdlib`. Refresh tokens are SHA-256 hashed at rest.
 | `DB_POOL_SIZE` | `5` | SQLAlchemy pool per worker |
 | `DB_MAX_OVERFLOW` | `10` | Temporary extra connections |
 | `DB_USE_NULL_POOL` | `false` | Use `NullPool` for serverless hosts. Automatically enabled when `VERCEL` is set or the URL uses the Supabase transaction pooler on port 6543 |
+| `DB_CONNECT_TIMEOUT_SECONDS` | `10` | TCP connect timeout added to every PostgreSQL URL (1–60). Prevents an unreachable host from hanging a Vercel function |
+| `DB_SSL_MODE` | empty | Optional libpq `sslmode`. Supabase hosts (`*.supabase.co`, `*.pooler.supabase.com`) automatically use `require`; set `disable` only for a trusted local proxy |
 
 `alembic upgrade head` is the only supported way to create or upgrade a production schema. Nine
 revisions are committed. The container entrypoint runs migrations on every start; that is safe but
@@ -76,7 +80,12 @@ separate release job and disable the entrypoint step.
 
 SQLite is supported for tests and demos, not for concurrent production traffic.
 
-On Vercel, point `DATABASE_URL` at the **Supabase transaction pooler** (port 6543) and leave
+`DATABASE_URL` is normalised at startup: surrounding quotes/whitespace are removed, `postgres://`
+becomes `postgresql+psycopg2://`, Prisma-only query parameters (`pgbouncer`, `connection_limit`,
+`pool_timeout`) are dropped, and Supabase hosts get `sslmode=require` plus a connect timeout. A raw
+`@`, `:`, `/` or `#` in the password is repaired **only** for known Supabase hosts; for any other host
+percent-encode it (`@` → `%40`, `:` → `%3A`, `/` → `%2F`, `#` → `%23`). Validation errors never
+echo the URL. On Vercel, point `DATABASE_URL` at the **Supabase transaction pooler** (port 6543) and leave
 `DB_USE_NULL_POOL=true`. Run `alembic upgrade head` through the **session pooler or direct**
 connection on port 5432, not through the transaction pooler. Supabase's direct host is IPv6-only;
 use the session pooler from IPv4-only CI runners. See [SUPABASE.md](SUPABASE.md).

@@ -160,3 +160,40 @@ def test_logout_all_revokes_every_session(client: TestClient) -> None:
     assert response.status_code == 204
     assert client.cookies.get("afs_refresh") in (None, "")
     assert client.post("/api/v1/auth/refresh").status_code == 401
+
+
+def test_cookie_refresh_rejects_an_untrusted_origin(
+    client: TestClient, user: dict, monkeypatch
+) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "cors_origins", "https://app.example.com")
+    blocked = client.post(
+        "/api/v1/auth/refresh", headers={"Origin": "https://evil.example"}
+    )
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"]["code"] == "untrusted_origin"
+
+    allowed = client.post(
+        "/api/v1/auth/refresh", headers={"Origin": "https://app.example.com/"}
+    )
+    assert allowed.status_code == 200
+
+
+def test_cookie_logout_rejects_an_untrusted_origin(
+    client: TestClient, user: dict, monkeypatch
+) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "cors_origins", "https://app.example.com")
+    blocked = client.post(
+        "/api/v1/auth/logout", headers={"Origin": "https://evil.example"}
+    )
+    assert blocked.status_code == 403
+    assert client.cookies.get("afs_refresh")
+
+    allowed = client.post(
+        "/api/v1/auth/logout", headers={"Origin": "https://app.example.com"}
+    )
+    assert allowed.status_code == 204
+    assert client.cookies.get("afs_refresh") in (None, "")

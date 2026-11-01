@@ -6,8 +6,9 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
+from sqlalchemy import create_engine, pool
+
 from alembic import context
-from sqlalchemy import engine_from_config, pool
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -17,7 +18,6 @@ from app.core.config import settings  # noqa: E402
 from app.models import Base  # noqa: E402  (imports every model)
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
@@ -38,11 +38,10 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Build the engine directly from the normalised settings URL instead of
+    # passing it through ConfigParser. Percent-encoded passwords (``%40``) are
+    # otherwise interpreted as interpolation syntax and break migrations.
+    connectable = create_engine(settings.database_url, poolclass=pool.NullPool)
     with connectable.connect() as connection:
         context.configure(
             connection=connection,

@@ -7,15 +7,47 @@ real credential.
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote, unquote
 
-from pydantic import field_validator
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_DIR.parent
+
+_SUPABASE_HOST_RE = re.compile(
+    r"@(?P<host>aws-\d+-[a-z0-9-]+\.pooler\.supabase\.com|db\.[a-z0-9]+\.supabase\.co)"
+    r"(?::(?P<port>\d+))?(?P<tail>/.*)?$",
+    re.IGNORECASE,
+)
+
+
+def _repair_supabase_userinfo(value: str) -> str:
+    """Percent-encode a Supabase password pasted with raw special characters.
+
+    A raw ``@`` in a password makes SQLAlchemy parse the host incorrectly; the
+    resulting OperationalError is otherwise very hard to diagnose. Only the
+    known Supabase host suffix is repaired, and the value is never logged.
+    """
+    match = re.match(r"^(?P<scheme>postgres(?:ql)?(?:\+psycopg2)?://)(?P<rest>.*)$", value, re.I)
+    if not match:
+        return value
+    rest = match.group("rest")
+    host_match = _SUPABASE_HOST_RE.search(rest)
+    if not host_match:
+        return value
+    userinfo = rest[: host_match.start()]
+    if ":" not in userinfo:
+        return value
+    username, password = userinfo.split(":", 1)
+    safe_username = quote(unquote(username), safe="._-")
+    safe_password = quote(unquote(password), safe="")
+    return f"{match.group('scheme')}{safe_username}:{safe_password}{rest[host_match.start():]}"
 
 
 class Settings(BaseSettings):
@@ -33,6 +65,13 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     public_api_url: str = "http://localhost:8000"
+    # The OpenAPI schema contains route names and request/response shapes, not
+    # secrets. Keep it available by default; set API_DOCS_ENABLED=false to hide
+    # /docs, /redoc and /openapi.json completely.
+    api_docs_enabled: bool = True
+    # Trust X-Forwarded-For only when the app is behind a proxy that overwrites
+    # it. Vercel does this automatically; set true for nginx/Render deployments.
+    trust_proxy_headers: bool = False
 
     # ---- Security ----
     secret_key: str = "dev-only-insecure-secret-change-me"
@@ -44,6 +83,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
 
     # ---- Database ----
+    # Used for every PostgreSQL connection, including Alembic. A timeout keeps
+    # a serverless request from hanging until the platform kills it.
+    db_connect_timeout_seconds: int = 10
+    # Optional explicit libpq sslmode. Supabase hosts default to "require".
+    db_ssl_mode: str = ""
     database_url: str = "postgresql+psycopg2://fashion:fashion@localhost:5432/fashion_studio"
     db_echo: bool = False
     db_pool_size: int = 5
@@ -122,7 +166,14 @@ class Settings(BaseSettings):
     # ---- Derived ----
     @property
     def cors_origin_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        # Browsers send an Origin without a trailing slash. Normalise common
+        # copy/paste mistakes instead of silently failing every CORS preflight.
+        origins: list[str] = []
+        for raw in self.cors_origins.split(","):
+            origin = raw.strip().rstrip("/")
+            if origin and origin not in origins:
+                origins.append(origin)
+        return origins
 
     @property
     def media_path(self) -> Path:
@@ -143,6 +194,35 @@ class Settings(BaseSettings):
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
 
+    @field_validator("db_connect_timeout_seconds")
+    @classmethod
+    def _validate_connect_timeout(cls, value: int) -> int:
+        if not 1 <= value <= 60:
+            raise ValueError("DB_CONNECT_TIMEOUT_SECONDS must be between 1 and 60")
+        return value
+
+    @field_validator("db_ssl_mode")
+    @classmethod
+    def _validate_ssl_mode(cls, value: str) -> str:
+        mode = value.strip().lower()
+        allowed = {"", "disable", "allow", "prefer", "require", "verify-ca", "verify-full"}
+        if mode not in allowed:
+            raise ValueError("DB_SSL_MODE is not a valid libpq sslmode")
+        return mode
+
+    @field_validator("supabase_secret_key", "supabase_publishable_key")
+    @classmethod
+    def _strip_optional_secrets(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("supabase_storage_bucket", "media_root")
+    @classmethod
+    def _require_non_empty(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("This setting must not be empty")
+        return cleaned
+
     @field_validator("supabase_url")
     @classmethod
     def _normalise_supabase_url(cls, value: str) -> str:
@@ -153,18 +233,60 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     @classmethod
-    def _normalise_database_url(cls, value: str) -> str:
-        """Accept the connection strings providers paste into their dashboards.
+    def _normalise_database_url(cls, value: str, info: ValidationInfo) -> str:
+        """Normalise provider dashboard URLs without ever logging the value.
 
-        Render, Neon and Heroku hand out ``postgres://`` or ``postgresql://``
-        URLs. SQLAlchemy needs the driver in the scheme, otherwise it tries to
-        import psycopg2 as the default DBAPI and fails with an opaque error.
+        Handles the common production failures: surrounding quotes/whitespace,
+        ``postgres://`` schemes, raw special characters in a Supabase password,
+        Prisma-only pooler query parameters, missing TLS on Supabase, and a
+        missing connection timeout.
         """
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1].strip()
+        if not value:
+            raise ValueError("DATABASE_URL must not be empty")
+        if value.startswith("sqlite"):
+            return value
+
+        value = _repair_supabase_userinfo(value)
         if value.startswith("postgres://"):
-            return "postgresql+psycopg2://" + value[len("postgres://") :]
-        if value.startswith("postgresql://"):
-            return "postgresql+psycopg2://" + value[len("postgresql://") :]
-        return value
+            value = "postgresql+psycopg2://" + value[len("postgres://") :]
+        elif value.startswith("postgresql://"):
+            value = "postgresql+psycopg2://" + value[len("postgresql://") :]
+
+        try:
+            url = make_url(value)
+        except Exception:
+            # Never include the value in the exception: it contains a password.
+            raise ValueError("DATABASE_URL is not a valid database URL") from None
+
+        if url.get_backend_name() != "postgresql":
+            return value
+
+        query = dict(url.query)
+        # Prisma/Supabase UI variants that libpq does not understand.
+        for unsupported in ("pgbouncer", "connection_limit", "pool_timeout"):
+            query.pop(unsupported, None)
+
+        host = (url.host or "").lower()
+        is_supabase = host.endswith(".supabase.co") or host.endswith(".pooler.supabase.com")
+        configured_ssl = str(info.data.get("db_ssl_mode") or "").strip().lower()
+        if configured_ssl:
+            query["sslmode"] = configured_ssl
+        elif is_supabase and query.get("sslmode", "").lower() not in {
+            "require",
+            "verify-ca",
+            "verify-full",
+        }:
+            # Supabase requires TLS. Do not silently send credentials in clear.
+            query["sslmode"] = "require"
+
+        timeout = info.data.get("db_connect_timeout_seconds", 10)
+        if timeout and "connect_timeout" not in query:
+            query["connect_timeout"] = str(int(timeout))
+
+        return url.set(query=query).render_as_string(hide_password=False)
 
     @field_validator("secret_key")
     @classmethod

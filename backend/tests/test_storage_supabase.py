@@ -127,3 +127,15 @@ def test_artwork_uploads_and_reports_its_thumbnail(supabase_settings, monkeypatc
 
     assert stored.storage_key.startswith("design/art/")
     assert stored.thumbnail_key and stored.thumbnail_key.startswith("design/art/thumbs/")
+
+
+def test_storage_configured_requires_the_complete_supabase_settings(
+    supabase_settings, monkeypatch
+) -> None:
+    assert storage.storage_configured() is True
+
+    monkeypatch.setattr(settings, "supabase_secret_key", "")
+    assert storage.storage_configured() is False
+
+    monkeypatch.setattr(settings, "media_storage", "local")
+    assert storage.storage_configured() is True

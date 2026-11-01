@@ -36,6 +36,8 @@ services:
       DATABASE_URL: postgresql+psycopg2://fashion:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the environment}@db:5432/fashion_studio
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in the environment}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      # nginx (web) proxies /api and appends the real client address.
+      TRUST_PROXY_HEADERS: "true"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

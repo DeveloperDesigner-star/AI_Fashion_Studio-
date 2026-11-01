@@ -41,8 +41,8 @@ The backend is prepared for **Vercel's native Python runtime**:
    see [SUPABASE.md](SUPABASE.md).
 
 Deployment is not successful until `https://<backend>/api/v1/health` returns 200
-and the function logs show no startup error. `/docs` must return 404 because
-`APP_ENV=production`.
+and the function logs show no startup error. `/docs` and `/openapi.json` return 200 unless
+`API_DOCS_ENABLED=false`; the docs CSP allows the Swagger UI CDN while keeping the API JSON locked down.
 
 ### Why the root directory matters
 
@@ -91,7 +91,7 @@ Do not announce success until all of these pass:
    the owner gets 200.
 6. Upload a small portrait, then wait and reload it. The file lives in the private
    Supabase bucket and still loads after a cold start.
-7. `https://<backend>/docs` is 404.
+7. `https://<backend>/docs` is 200 unless documentation is deliberately disabled.
 8. Security headers (CSP, nosniff) are present; hashed assets are cached.
 9. On Android Chrome, complete the mobile checks in [MOBILE.md](MOBILE.md).
 
