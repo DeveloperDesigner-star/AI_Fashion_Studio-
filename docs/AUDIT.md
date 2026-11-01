@@ -61,7 +61,7 @@ environmental limits are recorded rather than papered over.
 
 | Gate | Result |
 |---|---|
-| Backend tests | **200 passed** |
+| Backend tests | **204 passed** |
 | Frontend tests | **180 passed** in 19 files |
 | Ruff | clean |
 | ESLint (`--max-warnings 0`, `src` + `e2e`) | clean |
@@ -104,7 +104,7 @@ independently of this repository.
 
 **Result: PASS.**
 
-- 200 backend tests cover auth/session rotation, profiles and measurements, catalogue, designs and
+- 204 backend tests cover auth/session rotation, profiles and measurements, catalogue, designs and
   revisions, outfits, media, avatars and consent, AI fallback/quotas, try-on worker contracts, print
   packages, marketplace orders, administration, privacy and deletion workflows.
 - The live OpenAPI document exposes **186 operations across 159 paths**, all mounted under
@@ -185,7 +185,7 @@ manual release task.
 
 **Sandbox-reset note:** the 24/24 browser run above was recorded before the final dependency-security
 and lazy-route hardening. The sandbox was then reset and its Chromium binary/libraries were not
-available for another browser run. The final commit was re-verified with **200 backend tests, 180
+available for another browser run. The final commit was re-verified with **204 backend tests, 180
 frontend tests, TypeScript/ESLint/Ruff, a production build, pip-audit/npm runtime audit and live API
 probes** (login, role boundary, private media ownership, upload, rule-based AI, try-on unavailable,
 and preview-proxy auth refresh). Re-run the Playwright suite in staging or on a developer machine

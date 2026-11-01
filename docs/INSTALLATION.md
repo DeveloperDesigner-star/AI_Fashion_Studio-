@@ -86,7 +86,7 @@ make seed                        # catalogue + curated looks
 If you run PostgreSQL yourself, create a database and point `DATABASE_URL` at it:
 
 ```ini
-DATABASE_URL=postgresql+psycopg2://fashion:fashion@localhost:5432/fashion_studio
+DATABASE_URL=postgresql+psycopg2://fashion:change-me-database-password@localhost:5432/fashion_studio
 ```
 
 Migrations are versioned in `backend/alembic/versions/`. `alembic upgrade head` is idempotent and is
@@ -139,6 +139,7 @@ curl -s http://localhost:5173/api/v1/meta/config
 
 ```bash
 export SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(64))')"
+export POSTGRES_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(32))')"
 docker compose --profile full up --build
 ```
 
@@ -155,7 +156,7 @@ Production checklist:
 
 1. Terminate TLS in front of nginx and set `COOKIE_SECURE=true`.
 2. Set `CORS_ORIGINS` to the real site origin only.
-3. Replace `SECRET_KEY`, rotate any AI keys, and keep `.env` out of version control.
+3. Replace `SECRET_KEY` and `POSTGRES_PASSWORD`, rotate any AI keys, and keep `.env` out of version control.
 4. Run `make admin` or the container equivalent once; do not ship demo users.
 5. Configure a backup schedule for `pgdata` and the uploads volume.
 
@@ -182,7 +183,7 @@ Production checklist:
 make check        # ruff + eslint + tsc + pytest + vitest + production build
 ```
 
-Expected in the Phase 10 release: Ruff clean, ESLint clean, TypeScript clean, **200 backend tests**,
+Expected in the Phase 10 release: Ruff clean, ESLint clean, TypeScript clean, **204 backend tests**,
 **180 frontend tests** in 19 files, and a successful Vite build. Then confirm both servers respond as
 shown in step 6.
 

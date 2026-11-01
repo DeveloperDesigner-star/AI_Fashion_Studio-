@@ -32,16 +32,31 @@ per-component garment customisation, print preparation and a production marketpl
 """
 
 
+def validate_production_settings() -> None:
+    """Refuse the known-development defaults before a production process accepts traffic."""
+    if not settings.is_production:
+        return
+    if len(settings.secret_key) < 32 or "change-me" in settings.secret_key:
+        raise RuntimeError(
+            "SECRET_KEY must be a random value of at least 32 characters when APP_ENV=production."
+        )
+    if "*" in settings.cors_origin_list:
+        raise RuntimeError("CORS_ORIGINS must list exact origins when APP_ENV=production.")
+    if not settings.cookie_secure:
+        logger.warning("COOKIE_SECURE is false in production; refresh cookies will not be Secure.")
+    if settings.debug:
+        logger.warning("DEBUG is true in production; disable it after troubleshooting.")
+
+
 @asynccontextmanager
 async def lifespan(_application: FastAPI) -> AsyncIterator[None]:
+    validate_production_settings()
     settings.media_path.mkdir(parents=True, exist_ok=True)
     logger.info(
         "AI Fashion Studio API started (env=%s, db=%s)",
         settings.app_env,
         settings.database_url.split("://", 1)[0],
     )
-    if settings.is_production and "change-me" in settings.secret_key:
-        logger.error("SECRET_KEY is still the development default — rotate it before serving traffic.")
     yield
 
 

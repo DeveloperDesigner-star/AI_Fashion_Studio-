@@ -20,7 +20,7 @@ python -c "import secrets;print(secrets.token_urlsafe(64))"   # SECRET_KEY
 | Variable | Why |
 |---|---|
 | `APP_ENV=production` | Enables production behaviour: API docs/OpenAPI off, HSTS/CSP headers on JSON responses, debug logging off |
-| `SECRET_KEY` | Signs JWTs. The API refuses startup with a key shorter than 16 characters and logs an error if the placeholder is still present |
+| `SECRET_KEY` | Signs JWTs. Values shorter than 16 characters are rejected everywhere; in `APP_ENV=production` the API refuses startup unless the key is at least 32 characters and is not the template placeholder |
 | `DATABASE_URL` | PostgreSQL is the supported production database |
 | `CORS_ORIGINS` | Must be the real public origin if the browser calls the API directly; do not use `*` |
 | `COOKIE_SECURE=true` | Required when the public site is HTTPS, so the refresh cookie cannot travel in clear text |
@@ -63,6 +63,7 @@ via `pwdlib`. Refresh tokens are SHA-256 hashed at rest.
 | Variable | Default | Notes |
 |---|---|---|
 | `DATABASE_URL` | PostgreSQL on localhost | `postgresql+psycopg2://user:pass@host:5432/db`; `sqlite:///./var/dev.db` for local tests |
+| `POSTGRES_PASSWORD` | template placeholder | Required by `docker compose`; use a URL-safe random value and keep it out of Git |
 | `DB_ECHO` | `false` | SQL logging; keep off in production |
 | `DB_POOL_SIZE` | `5` | SQLAlchemy pool per worker |
 | `DB_MAX_OVERFLOW` | `10` | Temporary extra connections |
@@ -170,7 +171,8 @@ When the frontend and API are on different sites (Vercel + separate backend), se
 
 | Variable | Default | Notes |
 |---|---|---|
-| `SECRET_KEY` (compose) | no default | Compose refuses to start without it |
+| `SECRET_KEY` (compose) | no default | Compose refuses to start without it; production startup validates its strength |
+| `POSTGRES_PASSWORD` (compose) | no default | Compose refuses to start without it |
 | `SEED_CATALOGUE` | `true` | Set `false` once the catalogue is populated |
 | `PORT` | `8000` | Uvicorn listen port |
 | `WEB_CONCURRENCY` | `2` | Uvicorn workers; see the rate-limit caveat |

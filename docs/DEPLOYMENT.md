@@ -74,6 +74,7 @@ Do not build the frontend with secrets in `VITE_*` variables. Only `VITE_API_BAS
 
 ```bash
 export SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(64))')"
+export POSTGRES_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(32))')"
 export COOKIE_SECURE=true
 export CORS_ORIGINS=https://studio.example.com
 docker compose --profile full up --build -d
@@ -92,7 +93,7 @@ skipping it makes releases faster and avoids unintended catalogue changes.
 | Item | Production value | Why |
 |---|---|---|
 | `APP_ENV` | `production` | Disables `/docs`, `/openapi.json`, debug logging; enables HSTS/CSP on API JSON |
-| `SECRET_KEY` | 64-byte random value | JWT signing; a placeholder is rejected |
+| `SECRET_KEY` | 64-byte random value | JWT signing; production refuses a placeholder or a key under 32 characters |
 | `COOKIE_SECURE` | `true` | Refresh cookie must not cross plain HTTP |
 | `CORS_ORIGINS` | exact public origin | No wildcard; credentials are enabled |
 | `DATABASE_URL` | PostgreSQL | SQLite is for tests/demos |
@@ -263,7 +264,8 @@ with sticky sessions is **not** required.
 ## 11. Production checklist
 
 - [ ] `APP_ENV=production`, `DEBUG=false`
-- [ ] `SECRET_KEY` random and not the template
+- [ ] `SECRET_KEY` random, at least 32 characters, and not the template
+- [ ] `POSTGRES_PASSWORD` random and not the compose default
 - [ ] PostgreSQL, not SQLite
 - [ ] `COOKIE_SECURE=true` and HTTPS everywhere
 - [ ] `CORS_ORIGINS` is the exact public origin

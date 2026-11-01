@@ -9,10 +9,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: fashion
-      POSTGRES_PASSWORD: fashion
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the environment}
       POSTGRES_DB: fashion_studio
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -32,7 +32,8 @@ services:
         condition: service_healthy
     environment:
       APP_ENV: production
-      DATABASE_URL: postgresql+psycopg2://fashion:fashion@db:5432/fashion_studio
+      DEBUG: "false"
+      DATABASE_URL: postgresql+psycopg2://fashion:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the environment}@db:5432/fashion_studio
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in the environment}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
@@ -49,7 +50,7 @@ services:
       MEDIA_ROOT: /data/uploads
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - media:/data/uploads
 
@@ -65,7 +66,7 @@ services:
       CATVTON_PRECISION: ${CATVTON_PRECISION:-bf16}
       CATVTON_MODELS_DIR: ${CATVTON_MODELS_DIR:-}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     # Compose (non-Swarm) needs this to pass the NVIDIA device through.
     gpus: all
     volumes:

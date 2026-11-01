@@ -57,6 +57,21 @@ docs/                   installation, development, architecture, API, deployment
 
 ---
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request and on `main`:
+
+- **Backend:** install dev requirements, Ruff, Pytest and `pip-audit` against runtime requirements.
+- **Frontend:** `npm ci`, ESLint, `tsc --noEmit`, Vitest, production build and
+  `npm audit --omit=dev`.
+- **Browser journeys:** install Chromium, create a throwaway SQLite database, seed the catalogue,
+  start Uvicorn on `:8000`, then run all 24 Playwright tests with `--workers=1`.
+
+The browser job uses SwiftShader flags so the 3D tests run on a headless runner. A failure uploads
+the Playwright report and prints the API log. Do not merge a PR with a red required job.
+
+---
+
 ## Backend conventions
 
 **Routing.** Each resource has a module under `app/api/v1/endpoints/`, registered in
