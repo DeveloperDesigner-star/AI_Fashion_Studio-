@@ -370,12 +370,11 @@ and deployment work was re-verified on 2026-11-01:
   vulnerabilities**; `npm audit --omit=dev` reports 0 and `pip check` is clean. The full `npm audit`
   reports 11 moderate dev-only advisories in the ESLint/minimatch toolchain; production dependencies
   are unaffected, and clearing them needs an ESLint 10 migration.
-- **End-to-end:** **24/24 Playwright tests passed** (`--workers=1`, ~1.9 min) before the final
-  dependency/lazy-route hardening. This includes a 27-route desktop sweep, the same sweep at 390 px,
-  the complete registration/onboarding/3D journey, print-package PDF/ZIP export, business and admin
-  journeys, plus API security and honesty checks. The audit sandbox was reset afterwards and its
-  Chromium was unavailable, so the final commit re-ran the 205 backend + 180 frontend + production
-  build gates and live API probes; rerun `npm run e2e` in staging before release.
+- **End-to-end:** **24/24 Playwright tests passed on the final commit** in GitHub Actions
+  (`--workers=1`, 3m19s), including a 27-route desktop sweep, the same sweep at 390 px, the complete
+  registration/onboarding/3D journey, print-package PDF/ZIP export, business and admin journeys, plus
+  API security and honesty checks. The agent sandbox cannot install Chromium's system libraries, so
+  the browser suite is enforced by CI; both PR #1 and the post-merge `main` workflow are green.
 - **Mobile 3D:** on an emulated Pixel 5 (393×851, DPR 2.75, touch) the rig became interactive in
   **1.96 s**; pause/walk state changes, camera presets, fullscreen and responsive controls all
   passed with zero horizontal overflow. This is Chromium device emulation with SwiftShader, not a
