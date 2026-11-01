@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.models.catalog import Garment
@@ -46,23 +48,40 @@ def _builtin_values(kind: str) -> list[tuple[str, str]]:
 
 
 def ensure_terms(db: Session) -> None:
-    """Seed any built-in term that is missing. Existing rows are never reset."""
+    """Seed any built-in term that is missing. Existing rows are never reset.
 
+    Two first requests can race between the existence check and the insert, so
+    the insert is an ``ON CONFLICT DO NOTHING`` against the unique
+    ``(kind, value)`` index. That keeps a cold, freshly migrated database free of
+    duplicate discovery terms (which React would report as duplicate list keys).
+    """
+
+    dialect = db.get_bind().dialect.name
+    insert = {"postgresql": postgresql_insert, "sqlite": sqlite_insert}.get(dialect)
     for kind in ("category", "style", "profile_style"):
         existing = set(db.scalars(select(CatalogTerm.value).where(CatalogTerm.kind == kind)).all())
-        for index, (value, label) in enumerate(_builtin_values(kind)):
-            if value in existing:
-                continue
-            db.add(
-                CatalogTerm(
-                    kind=kind,
-                    value=value,
-                    label=label,
-                    description="",
-                    is_active=True,
-                    is_builtin=True,
-                    sort_order=index,
-                )
+        rows = [
+            {
+                "kind": kind,
+                "value": value,
+                "label": label,
+                "description": "",
+                "is_active": True,
+                "is_builtin": True,
+                "sort_order": index,
+            }
+            for index, (value, label) in enumerate(_builtin_values(kind))
+            if value not in existing
+        ]
+        if not rows:
+            continue
+        if insert is None:  # pragma: no cover - only SQLite and PostgreSQL are supported
+            db.add_all([CatalogTerm(**row) for row in rows])
+        else:
+            db.execute(
+                insert(CatalogTerm)
+                .values(rows)
+                .on_conflict_do_nothing(index_elements=["kind", "value"])
             )
     db.flush()
 

@@ -16,6 +16,7 @@ from app.db.catalog_data import LOOKS as CATALOG_LOOKS
 from app.db.catalog_data import build_catalog_garments
 from app.db.component_templates import components_for
 from app.models.catalog import Garment, Look
+from app.services.taxonomy import ensure_terms
 
 ALL_FABRICS = [
     "cotton", "linen", "silk", "wool", "cashmere", "denim",
@@ -705,6 +706,10 @@ def _all_looks() -> list[dict[str, Any]]:
 
 
 def seed_catalog(db: Session) -> dict[str, int]:
+    # Populate the admin-editable discovery vocabulary in the same transaction as
+    # the catalogue so a freshly seeded database serves taxonomy without a lazy
+    # first-request seed.
+    ensure_terms(db)
     created_garments = 0
     updated_garments = 0
     garments = _all_garments()

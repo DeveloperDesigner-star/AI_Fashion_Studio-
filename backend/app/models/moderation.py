@@ -17,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -104,6 +105,7 @@ class CatalogTerm(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "catalog_terms"
+    __table_args__ = (Index("uq_catalog_terms_kind_value", "kind", "value", unique=True),)
 
     kind: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
     value: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
