@@ -35,6 +35,10 @@ environment so the same commit can point at a staging or production API.
 
 ## 2. Deploy the backend first
 
+> **Free, phone-friendly path:** follow [RENDER.md](RENDER.md) for a Render
+> Docker web service plus a Neon PostgreSQL database. The rest of this section
+> describes the general requirements if you use another host.
+
 Vercel cannot host the API for this project’s needs: it needs a long-running Python process, a
 PostgreSQL connection, large private uploads (up to 8 MB by default) and a persistent media volume.
 Deploy it on a service that supports those, for example Render, Railway, Fly.io or your own VPS.
@@ -58,6 +62,11 @@ uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --proxy-headers --forwarded-a
 
 Run migrations once per release, before the new process serves traffic. Do not put the admin
 password in a committed file.
+
+The repository root contains a `vercel.json` for importing the **repository
+root**; it builds `frontend/` and writes `frontend/dist`. If you set Vercel's
+**Root Directory** to `frontend` instead, `frontend/vercel.json` is used. Both
+paths run the same environment-variable guard.
 
 ### Backend environment
 

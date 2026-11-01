@@ -5,7 +5,7 @@ component-level garment editor, a WebGL fitting room, print preparation, and a q
 marketplace between clients and workshops.
 
 **Status: Phases 1–10 complete — full repository audit and production-readiness pass done on
-2026-10-30, with mobile delivery and Vercel preparation updated 2026-11-01.** All gates are green: 206 backend tests, 180 frontend tests, 24 Playwright end-to-end
+2026-10-30, with mobile delivery and Vercel preparation updated 2026-11-01.** All gates are green: 210 backend tests, 180 frontend tests, 24 Playwright end-to-end
 tests, Ruff/ESLint/TypeScript clean, a production build, zero known Python dependency advisories and
 zero runtime npm advisories. (Eleven moderate advisories remain in the dev-only ESLint/minimatch
 toolchain; they are not shipped in the browser bundle.) The audit found and fixed a render-time navigation bug, duplicate React keys,
@@ -293,7 +293,7 @@ make check        # ruff + ESLint + tsc + Pytest + Vitest + production build
 Individually:
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest          # 206 tests
+cd backend && ../.venv/bin/python -m pytest          # 210 tests
 cd backend && ../.venv/bin/python -m ruff check app tests
 cd frontend && npm run typecheck && npm run lint
 cd frontend && npx vitest run                        # 180 tests
@@ -361,7 +361,7 @@ and retry boundary.
 Verified on 2026-10-30 against the live API, a fresh database and the Vite app; the mobile/lazy-route
 and deployment work was re-verified on 2026-11-01:
 
-- **Gate:** `make check` is green — **206 backend tests**, **180 frontend tests** in 19 files,
+- **Gate:** `make check` is green — **210 backend tests**, **180 frontend tests** in 19 files,
   Ruff, ESLint `--max-warnings 0`, TypeScript and the Vite production build.
 - **Dependencies:** `pip-audit` initially reported **99 known advisories in 6 packages**
   (Pillow, Starlette, python-multipart, pydantic-settings, ecdsa and python-jose). FastAPI, Uvicorn,
@@ -545,6 +545,7 @@ Verified against a live API on 2026-10-30:
 - [Installation guide](docs/INSTALLATION.md) — clean machine to running instance, PostgreSQL/SQLite, Docker, E2E setup, troubleshooting.
 - [Configuration & environment](docs/CONFIGURATION.md) — every backend, frontend, worker and test variable, defaults and production requirements.
 - [Deployment](docs/DEPLOYMENT.md) — topology, TLS/proxy, migrations, backups, monitoring, scaling, rollback and the production checklist.
+- [Render free API + Neon](docs/RENDER.md) — the simplest phone-friendly backend deployment, with exact dashboard steps.
 - [Vercel + separate backend](docs/VERCEL.md) — the phone-accessible deployment path, required variables and what must be connected.
 - [Mobile guide](docs/MOBILE.md) — Android preview, touch/layout rules, low-memory behaviour and a test checklist.
 - [Limitations](docs/LIMITATIONS.md) — product boundaries and environment-specific gaps, stated explicitly.
@@ -554,6 +555,21 @@ Verified against a live API on 2026-10-30:
 - [Administration & security](docs/ADMINISTRATION.md) — accounts, reports, disputes, taxonomy/templates, AI spending controls, privacy workflows and the security test matrix.
 - [Printing & production](docs/PRINTING.md) — print packages, DPI/colour rules, PDF/ZIP export, the ten-state workflow, reviews, and the honest printer-integration status.
 - [Virtual try-on](docs/TRY_ON.md) — CatVTON worker, licence, consent and GPU requirements.
+
+---
+
+## Free cloud deployment (phone-friendly)
+
+Use Neon's free PostgreSQL and Render's free Docker web service, then set
+`VITE_API_BASE_URL` on Vercel. The complete tap-by-tap guide is
+[docs/RENDER.md](docs/RENDER.md).
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/DeveloperDesigner-star/AI_Fashion_Studio-)
+
+The free Render service sleeps after 15 minutes and its disk is ephemeral, so
+uploaded photos disappear on restart. Accounts and catalogue data live in Neon
+and persist. Attach a paid disk or S3-compatible storage before relying on
+uploads for real work.
 
 ---
 

@@ -1,0 +1,48 @@
+# Render Blueprint for the AI Fashion Studio API.
+#
+# Free plan: 512 MB RAM, sleeps after 15 idle minutes, ephemeral /data. The
+# PostgreSQL database is external (Neon free) so accounts and catalogue survive
+# restarts. Uploaded media does not: attach a paid Render disk or add S3 storage
+# before treating this as production.
+services:
+  - type: web
+    name: ai-fashion-studio-api
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/v1/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: MEDIA_ROOT
+        value: /data/uploads
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: SEED_CATALOGUE
+        value: "true"
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      - key: BOOTSTRAP_ADMIN_NAME
+        value: Studio Admin
+      - key: OPENAI_ENABLED
+        value: "false"
+      - key: AI_PAID_USAGE_ENABLED
+        value: "false"
