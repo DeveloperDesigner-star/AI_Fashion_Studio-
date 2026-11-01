@@ -25,6 +25,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ai_fashion_studio")
 
+DOCS_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
+DOCS_CSP = (
+    "default-src 'none'; "
+    "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+    "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+    "img-src 'self' data: https://fastapi.tiangolo.com; "
+    "font-src 'self' data: https://cdn.jsdelivr.net; "
+    "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+)
+
 DESCRIPTION = """
 AI-powered virtual fashion design platform: personalised avatars, 3D fitting room,
 per-component garment customisation, print preparation and a production marketplace.
@@ -46,6 +56,8 @@ def validate_production_settings() -> None:
         raise RuntimeError("CORS_ORIGINS must list exact origins when APP_ENV=production.")
     if not settings.cookie_secure:
         logger.warning("COOKIE_SECURE is false in production; refresh cookies will not be Secure.")
+    if settings.cookie_samesite == "none" and not settings.cookie_secure:
+        raise RuntimeError("COOKIE_SAMESITE=none requires COOKIE_SECURE=true.")
     if settings.debug:
         logger.warning("DEBUG is true in production; disable it after troubleshooting.")
     if settings.media_storage == "supabase":
@@ -79,9 +91,9 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version="1.0.0",
         description=DESCRIPTION,
-        docs_url="/docs" if not settings.is_production else None,
-        redoc_url="/redoc" if not settings.is_production else None,
-        openapi_url="/openapi.json" if not settings.is_production else None,
+        docs_url="/docs" if settings.api_docs_enabled else None,
+        redoc_url="/redoc" if settings.api_docs_enabled else None,
+        openapi_url="/openapi.json" if settings.api_docs_enabled else None,
     )
 
     application.add_middleware(CommitSessionMiddleware)
@@ -90,7 +102,8 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origin_list,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+        allow_headers=["Authorization", "Content-Type", "X-Requested-With", "X-Request-ID"],
+        expose_headers=["X-Request-ID", "X-Response-Time-ms"],
         max_age=600,
     )
 
@@ -111,7 +124,10 @@ def create_app() -> FastAPI:
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         if settings.is_production:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-            response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+            is_docs = settings.api_docs_enabled and request.url.path in DOCS_PATHS
+            response.headers["Content-Security-Policy"] = (
+                DOCS_CSP if is_docs else "default-src 'none'; frame-ancestors 'none'"
+            )
         if duration_ms > 1500:
             logger.warning("Slow request %s %s (%.0f ms)", request.method, request.url.path, duration_ms)
         return response
@@ -161,7 +177,7 @@ def create_app() -> FastAPI:
         return {
             "name": settings.app_name,
             "version": "1.0.0",
-            "docs": "/docs" if not settings.is_production else "disabled",
+            "docs": "/docs" if settings.api_docs_enabled else "disabled",
             "api": settings.api_v1_prefix,
         }
 

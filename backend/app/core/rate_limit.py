@@ -8,6 +8,7 @@ Redis (see docs/ARCHITECTURE.md). It is still a real limit, not a stub.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections import deque
@@ -47,11 +48,28 @@ class SlidingWindowLimiter:
 limiter = SlidingWindowLimiter()
 
 
+def _forwarded_headers_are_trusted() -> bool:
+    # Vercel overwrites X-Forwarded-For at its edge (documented anti-spoofing
+    # behaviour), so it is safe there. Anywhere else the operator must opt in.
+    return settings.trust_proxy_headers or bool(os.getenv("VERCEL"))
+
+
 def client_identity(request: Request) -> str:
+    """Return the rate-limit key without trusting client-supplied headers.
+
+    A caller can send any ``X-Forwarded-For`` value. Take the **last** hop only
+    when a trusted proxy is known to set it; the last entry is the address the
+    nearest proxy observed, while earlier entries are caller-controlled.
+    """
+
+    direct = request.client.host if request.client else "unknown"
+    if not _forwarded_headers_are_trusted():
+        return direct
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    if not forwarded:
+        return direct
+    hops = [hop.strip() for hop in forwarded.split(",") if hop.strip()]
+    return hops[-1] if hops else direct
 
 
 def enforce(scope: str, identity: str, limit: int) -> None:

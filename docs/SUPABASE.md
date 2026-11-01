@@ -85,6 +85,8 @@ continue to work. The Supabase Data API cannot read application tables directly.
 |---|---|
 | `APP_ENV` | `production` |
 | `DEBUG` | `false` |
+| `API_DOCS_ENABLED` | `true` (set `false` to hide `/docs`, `/redoc`, `/openapi.json`) |
+| `TRUST_PROXY_HEADERS` | `true` only if a reverse proxy overwrites `X-Forwarded-For`; Vercel does so automatically |
 | `SECRET_KEY` | 64 random characters; never reuse a template |
 | `DATABASE_URL` | Supabase **transaction pooler** URI, port 6543, password filled in |
 | `DB_USE_NULL_POOL` | `true` |
@@ -109,8 +111,11 @@ does not read it for database or Storage access.
 
 Verify:
 
-- `https://<backend>/api/v1/health` returns `"status":"ok"` and `"media_storage":"supabase"`.
-- `https://<backend>/docs` returns **404** because `APP_ENV=production`.
+- `https://<backend>/api/v1/health` returns **200**, `"status":"ok"`, `"database":{"ok":true}` and
+  `"media_storage":"supabase"`. A database failure returns **503** with a safe category such as
+  `authentication_failed`, `dns_failure`, `connection_timeout`, `ssl_failure` or
+  `connection_refused`; raw driver messages and credentials are never returned.
+- `https://<backend>/docs` returns **200** unless `API_DOCS_ENABLED=false`.
 
 If startup fails, check Vercel's function logs. Missing
 `SUPABASE_SECRET_KEY` with `MEDIA_STORAGE=supabase` is deliberately fatal.
@@ -175,7 +180,8 @@ Supabase setting.
 
 Run these from the deployed URLs, not localhost:
 
-1. `GET https://<backend>/api/v1/health` → 200.
+1. `GET https://<backend>/api/v1/health` → 200. If it is 503, read `database.error` and use the
+   category to fix the URL/password/network before changing application code.
 2. Register a new account on the frontend; sign in again in a fresh tab to test
    the `HttpOnly; Secure; SameSite=None` refresh cookie.
 3. Upload a portrait. It should write to the private `media` bucket and come

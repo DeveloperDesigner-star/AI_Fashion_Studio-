@@ -63,3 +63,12 @@ def test_production_accepts_private_supabase_storage(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(settings, "supabase_secret_key", "sb_secret_test")
     monkeypatch.setattr(settings, "supabase_storage_bucket", "media")
     validate_production_settings()
+
+
+def test_production_rejects_samesite_none_without_secure(monkeypatch: pytest.MonkeyPatch) -> None:
+    _valid_production(monkeypatch)
+    monkeypatch.setattr(settings, "cookie_secure", False)
+    monkeypatch.setattr(settings, "cookie_samesite", "none")
+    monkeypatch.setattr(settings, "media_storage", "local")
+    with pytest.raises(RuntimeError, match="COOKIE_SECURE"):
+        validate_production_settings()

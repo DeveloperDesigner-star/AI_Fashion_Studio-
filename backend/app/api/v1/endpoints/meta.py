@@ -2,41 +2,52 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
-from fastapi import APIRouter
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from fastapi import APIRouter, Response, status
 
 from app.api.v1.deps import DbSession
 from app.core.config import settings
+from app.services import storage
 from app.services.ai import registry, spending
+from app.services.database_health import check_database
 
 APP_VERSION = "1.0.0"
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["meta"])
 
 
 @router.get("/health")
-def health(db: DbSession) -> dict[str, Any]:
-    database_ok = True
-    database_error: str | None = None
-    try:
-        db.execute(text("SELECT 1"))
-    except SQLAlchemyError as exc:  # pragma: no cover - depends on environment
-        database_ok = False
-        database_error = exc.__class__.__name__
+def health(response: Response, db: DbSession) -> dict[str, Any]:
+    check = check_database(db)
+    if not check.ok:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        # Deliberately log only the category and SQLSTATE. The raw driver
+        # exception can contain hostnames or other connection details.
+        logger.warning(
+            "Database health check failed: category=%s sqlstate=%s",
+            check.category,
+            check.sqlstate,
+        )
 
     backend = settings.database_url.split("://", 1)[0]
     return {
-        "status": "ok" if database_ok else "degraded",
+        "status": "ok" if check.ok else "unavailable",
         "version": APP_VERSION,
         "environment": settings.app_env,
-        "database": {"ok": database_ok, "driver": backend, "error": database_error},
+        "database": {
+            "ok": check.ok,
+            "driver": backend,
+            "error": check.category,
+            "sqlstate": check.sqlstate,
+        },
         "media_storage": settings.media_storage,
         "media_bucket": (
             settings.supabase_storage_bucket if settings.media_storage == "supabase" else None
         ),
+        "storage_configured": storage.storage_configured(),
         "media_root_writable": _media_writable(),
     }
 

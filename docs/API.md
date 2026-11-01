@@ -3,8 +3,9 @@
 The backend is a FastAPI application mounted at **`/api/v1`** (the prefix is configurable with
 `API_V1_PREFIX`). The generated OpenAPI schema is the authoritative contract for request bodies,
 query parameters and response models; this page documents the conventions and lists every
-operation. In development it is available at `/docs` and `/openapi.json`. **Both are disabled when
-`APP_ENV=production`.**
+operation. It is available at `/docs`, `/redoc` and `/openapi.json` by default, including production.
+Set `API_DOCS_ENABLED=false` to hide all three. The schema contains route names and data shapes only —
+never environment secrets. See the security notes below for the production policy.
 
 ---
 
@@ -78,6 +79,28 @@ The table is generated from the running OpenAPI document and lists all **186** o
 | `GET` | `/api/v1/meta/config` | Public Config |
 | `GET` | `/` | Root |
 | `GET` | `/health` | Health |
+
+`GET /api/v1/health` returns `200` when the database answers `SELECT 1` and `503` when it does not.
+The body never contains driver messages or credentials:
+
+```json
+{
+  "status": "ok",
+  "version": "1.0.0",
+  "environment": "production",
+  "database": {"ok": true, "driver": "postgresql", "error": null, "sqlstate": null},
+  "media_storage": "supabase",
+  "media_bucket": "media",
+  "storage_configured": true,
+  "media_root_writable": false
+}
+```
+
+On failure `status` is `"unavailable"` and `database.error` is one of `authentication_failed`,
+`configuration_error`, `schema_not_migrated`, `database_unavailable`, `dns_failure`,
+`connection_timeout`, `ssl_failure`, `connection_refused` or `database_error`. `database.sqlstate`
+contains the PostgreSQL SQLSTATE when the driver supplied one. `/health` is liveness only and stays
+`200` with `{"status":"ok"}`.
 
 ### Authentication and account
 
