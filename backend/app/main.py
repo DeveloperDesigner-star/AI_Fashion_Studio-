@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -47,6 +48,17 @@ def validate_production_settings() -> None:
         logger.warning("COOKIE_SECURE is false in production; refresh cookies will not be Secure.")
     if settings.debug:
         logger.warning("DEBUG is true in production; disable it after troubleshooting.")
+    if settings.media_storage == "supabase":
+        if not settings.supabase_url or not settings.supabase_secret_key:
+            raise RuntimeError(
+                "SUPABASE_URL and SUPABASE_SECRET_KEY are required when MEDIA_STORAGE=supabase."
+            )
+        if not settings.supabase_storage_bucket:
+            raise RuntimeError("SUPABASE_STORAGE_BUCKET must be set when MEDIA_STORAGE=supabase.")
+    elif os.getenv("VERCEL"):
+        logger.warning(
+            "MEDIA_STORAGE is local on Vercel; uploads will not survive a function restart."
+        )
 
 
 @asynccontextmanager

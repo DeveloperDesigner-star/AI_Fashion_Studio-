@@ -34,19 +34,28 @@ Requirements:
 - A persistent volume for uploads and a separate persistent volume for PostgreSQL.
 - Outbound HTTPS only if you enable Gemini/Groq/OpenAI.
 
-### Vercel frontend + separate API
+### Vercel frontend + Vercel FastAPI backend + Supabase
 
-Vercel can serve the SPA but cannot host the long-running Python API, PostgreSQL and private uploads
-volume. The prepared configuration is in `frontend/vercel.json` and
-[VERCEL.md](VERCEL.md). In that topology:
+Vercel's native Python runtime can serve this FastAPI app when the project's **Root Directory** is
+`backend`; Vercel reads `[tool.vercel] entrypoint = "app.main:app"` and preserves the real
+`/api/v1/...` paths. Supabase supplies PostgreSQL and a private Storage bucket; the function
+filesystem is only a cache. In that topology:
 
-- build the frontend with `VITE_API_BASE_URL=https://<api-host>/api/v1` (absolute HTTPS);
-- set the API `CORS_ORIGINS` to the exact Vercel origin;
+- build the frontend with `VITE_API_BASE_URL=https://<backend-domain>/api/v1` (absolute HTTPS);
+- set the backend `CORS_ORIGINS` to the exact frontend origin;
 - set `COOKIE_SECURE=true` and `COOKIE_SAMESITE=none`;
-- keep `MEDIA_ROOT` on persistent storage;
-- run migrations as a release step on the backend host.
+- set `DATABASE_URL` to the Supabase **transaction pooler** on port 6543 and
+  `DB_USE_NULL_POOL=true`;
+- set `MEDIA_STORAGE=supabase`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`,
+  `SUPABASE_STORAGE_BUCKET=media`, `MEDIA_ROOT=/tmp/uploads` and `MAX_UPLOAD_MB=4`;
+- run Alembic through the session pooler/direct connection in the manual GitHub Actions workflow,
+  then run `supabase/rls.sql`;
+- apply migrations before traffic switches to a new release.
 
-The Vercel build guard fails rather than deploy a frontend whose API base is missing or relative.
+The prepared configuration is in `backend/vercel.json`, `backend/pyproject.toml`,
+`.github/workflows/supabase-migrate.yml` and [VERCEL.md](VERCEL.md). The Vercel build guard fails
+rather than deploy a frontend whose API base is missing or relative. The container topology above
+remains the better fit for uploads over 4.5 MB or a long-running try-on worker.
 
 ---
 
@@ -122,7 +131,7 @@ The container entrypoint also runs `alembic upgrade head` on every start. That r
 role to have DDL permission. For least-privilege production, run migrations as a separate release
 job, then start the API with a runtime role that has DML only and set `SEED_CATALOGUE=false`.
 
-Back up before every migration. Migrations are versioned in `backend/alembic/versions/` (eight
+Back up before every migration. Migrations are versioned in `backend/alembic/versions/` (nine
 revisions at the Phase 10 audit); there is no automatic downgrade in the entrypoint.
 
 ---

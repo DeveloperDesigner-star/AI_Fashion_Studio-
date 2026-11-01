@@ -545,8 +545,9 @@ Verified against a live API on 2026-10-30:
 - [Installation guide](docs/INSTALLATION.md) — clean machine to running instance, PostgreSQL/SQLite, Docker, E2E setup, troubleshooting.
 - [Configuration & environment](docs/CONFIGURATION.md) — every backend, frontend, worker and test variable, defaults and production requirements.
 - [Deployment](docs/DEPLOYMENT.md) — topology, TLS/proxy, migrations, backups, monitoring, scaling, rollback and the production checklist.
-- [Render free API + Neon](docs/RENDER.md) — the simplest phone-friendly backend deployment, with exact dashboard steps.
-- [Vercel + separate backend](docs/VERCEL.md) — the phone-accessible deployment path, required variables and what must be connected.
+- [Supabase + Vercel backend](docs/SUPABASE.md) — PostgreSQL pooler, private Storage, RLS, environment variables and the manual migration workflow.
+- [Vercel frontend + backend](docs/VERCEL.md) — two Vercel projects, the native Python 3.12 runtime, limits and public-URL checks.
+- [Render + Neon fallback](docs/RENDER.md) — an alternative container host if Vercel's function limits are unsuitable.
 - [Mobile guide](docs/MOBILE.md) — Android preview, touch/layout rules, low-memory behaviour and a test checklist.
 - [Limitations](docs/LIMITATIONS.md) — product boundaries and environment-specific gaps, stated explicitly.
 - [API reference](docs/API.md) — authentication, errors, pagination and all 186 operations.
@@ -558,18 +559,21 @@ Verified against a live API on 2026-10-30:
 
 ---
 
-## Free cloud deployment (phone-friendly)
+## Cloud deployment (phone-friendly)
 
-Use Neon's free PostgreSQL and Render's free Docker web service, then set
-`VITE_API_BASE_URL` on Vercel. The complete tap-by-tap guide is
-[docs/RENDER.md](docs/RENDER.md).
+The prepared path is **Vercel frontend + Vercel FastAPI backend + Supabase
+PostgreSQL/private Storage**. It needs no terminal: database migrations run from
+a manual GitHub Actions workflow, and durable uploads live in Supabase. Follow
+[docs/SUPABASE.md](docs/SUPABASE.md) for the exact taps, then
+[docs/VERCEL.md](docs/VERCEL.md).
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/DeveloperDesigner-star/AI_Fashion_Studio-)
+The earlier Render + Neon path remains available in
+[docs/RENDER.md](docs/RENDER.md) as a container-host fallback. Render's free
+service sleeps and has an ephemeral disk, so uploads without external storage are
+not durable there.
 
-The free Render service sleeps after 15 minutes and its disk is ephemeral, so
-uploaded photos disappear on restart. Accounts and catalogue data live in Neon
-and persist. Attach a paid disk or S3-compatible storage before relying on
-uploads for real work.
+No public deployment is claimed by this repository until the live URLs pass the
+checklist in [docs/VERCEL.md](docs/VERCEL.md).
 
 ---
 

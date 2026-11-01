@@ -38,6 +38,44 @@ jobs:
       - name: Python dependency audit
         run: python -m pip_audit -r backend/requirements.txt
 
+  postgres:
+    name: PostgreSQL migrations and seed
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: ai_fashion_studio
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ai_fashion_studio"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg2://postgres:ci-only-password@127.0.0.1:5432/ai_fashion_studio
+      SECRET_KEY: ci-only-secret-key-that-is-long-enough-1234567890
+      MEDIA_ROOT: /tmp/uploads
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Apply every migration on PostgreSQL
+        run: cd backend && python -m alembic upgrade head
+      - name: Seed catalogue on PostgreSQL
+        run: cd backend && python scripts/init_db.py --skip-migrate
+      - name: Verify the schema version
+        run: cd backend && python -m alembic current
+
   frontend:
     name: Frontend (lint, tests, build, audit)
     runs-on: ubuntu-latest

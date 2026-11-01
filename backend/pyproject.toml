@@ -3,6 +3,26 @@ name = "ai-fashion-studio-backend"
 version = "1.0.0"
 description = "FastAPI backend for AI Fashion Studio"
 requires-python = ">=3.11"
+# Mirrors backend/requirements.txt so Vercel's Python builder (which uses uv
+# when pyproject.toml is present) installs the same runtime dependencies as the
+# Docker image. Keep the two lists in sync when upgrading.
+dependencies = [
+    "fastapi==0.162.0",
+    "uvicorn[standard]==0.54.0",
+    "pydantic==2.14.2",
+    "pydantic-settings==2.16.2",
+    "email-validator==2.3.0",
+    "SQLAlchemy==2.0.44",
+    "alembic==1.17.1",
+    "psycopg2-binary==2.9.11",
+    "PyJWT==2.15.1",
+    "pwdlib[argon2]==0.3.0",
+    "python-multipart==0.0.32",
+    "Pillow==13.0.0",
+    "opencv-python-headless==5.0.0.93",
+    "numpy==2.4.6",
+    "httpx==0.28.1",
+]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
@@ -24,3 +44,9 @@ ignore = ["B008", "E501"]
 [tool.coverage.run]
 source = ["app"]
 omit = ["app/db/seed.py"]
+
+[tool.vercel]
+# Vercel's Python runtime loads this ASGI app for every request. The project's
+# Root Directory must be `backend`; do not add a catch-all rewrite, because it
+# would replace the real /api/v1/... path before FastAPI can route it.
+entrypoint = "app.main:app"

@@ -41,7 +41,7 @@ audit sandbox, not the product design.
 | Area | Limitation | Mitigation / next step |
 |---|---|---|
 | Rate limiting | In-process, per worker; effective limit scales with `WEB_CONCURRENCY` | Use one worker or add a shared Redis-backed limiter before scaling out |
-| Uploads | Local filesystem only; no S3/object-storage driver | Persistent volume + authenticated media endpoints. Re-implement privacy checks before adding object storage |
+| Uploads | Local filesystem or private Supabase Storage; no other object-storage driver | Both paths keep uploads private behind authenticated media endpoints. Supabase mode was unit-tested with mocked HTTP, not against a live bucket |
 | Malware scanning | No antivirus/CDR service; uploads are decoded and re-encoded as images | Keep Pillow/OpenCV patched; run `pip-audit` on every release |
 | Retention | `UPLOAD_RETENTION_DAYS` and `AI_LOG_RETENTION_DAYS` are policy values only; no scheduled purge job | Assign an operator-owned job or admin procedure; erasure requests are separately audited |
 | Backups | No automated backup service in the repository | `pg_dump` + volume snapshots, with restore drills (see `DEPLOYMENT.md`) |
