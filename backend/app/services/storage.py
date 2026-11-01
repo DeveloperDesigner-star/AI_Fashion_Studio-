@@ -146,9 +146,15 @@ def _download_from_supabase(storage_key: str, target: Path) -> bool:
             code="storage_unavailable",
         ) from exc
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(target.name + ".tmp")
-    temporary.write_bytes(response.content)
-    temporary.replace(target)
+    # A unique temporary name avoids two concurrent readers corrupting the
+    # same cache file before the atomic replace.
+    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_bytes(response.content)
+        temporary.replace(target)
+    finally:
+        with contextlib.suppress(OSError):
+            temporary.unlink(missing_ok=True)
     return True
 
 
