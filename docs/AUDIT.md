@@ -61,7 +61,7 @@ environmental limits are recorded rather than papered over.
 
 | Gate | Result |
 |---|---|
-| Backend tests | **206 passed** |
+| Backend tests | **210 passed** |
 | Frontend tests | **180 passed** in 19 files |
 | Ruff | clean |
 | ESLint (`--max-warnings 0`, `src` + `e2e`) | clean |
@@ -104,7 +104,7 @@ independently of this repository.
 
 **Result: PASS.**
 
-- 206 backend tests cover auth/session rotation, profiles and measurements, catalogue, designs and
+- 210 backend tests cover auth/session rotation, profiles and measurements, catalogue, designs and
   revisions, outfits, media, avatars and consent, AI fallback/quotas, try-on worker contracts, print
   packages, marketplace orders, administration, privacy and deletion workflows.
 - The live OpenAPI document exposes **186 operations across 159 paths**, all mounted under
@@ -187,7 +187,7 @@ manual release task.
 in the new GitHub Actions workflow, where the **Browser journeys (Playwright)** job passed all 24
 tests in 3m19s on headless Chromium (`--workers=1`, 2 retries). The same workflow passed again on
 `main` after merge (`d40d873`). The agent sandbox itself lacks Chromium's system NSS libraries, so CI
-is the authoritative browser gate; the 206 backend tests, 180 frontend tests,
+is the authoritative browser gate; the 210 backend tests, 180 frontend tests,
 TypeScript/ESLint/Ruff, production build, pip-audit/npm runtime audit and live API probes were also
 re-run locally. Real hardware, touch and GPU behaviour still need the manual release pass described
 above.

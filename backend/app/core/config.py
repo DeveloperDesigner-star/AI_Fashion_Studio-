@@ -127,6 +127,21 @@ class Settings(BaseSettings):
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
 
+    @field_validator("database_url")
+    @classmethod
+    def _normalise_database_url(cls, value: str) -> str:
+        """Accept the connection strings providers paste into their dashboards.
+
+        Render, Neon and Heroku hand out ``postgres://`` or ``postgresql://``
+        URLs. SQLAlchemy needs the driver in the scheme, otherwise it tries to
+        import psycopg2 as the default DBAPI and fails with an opaque error.
+        """
+        if value.startswith("postgres://"):
+            return "postgresql+psycopg2://" + value[len("postgres://") :]
+        if value.startswith("postgresql://"):
+            return "postgresql+psycopg2://" + value[len("postgresql://") :]
+        return value
+
     @field_validator("secret_key")
     @classmethod
     def _warn_insecure_secret(cls, value: str) -> str:
