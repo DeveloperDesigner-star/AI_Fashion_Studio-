@@ -75,6 +75,11 @@ log. Do not merge a PR with a red required job.
 
 ## Backend conventions
 
+**Transactions.** `get_db` attaches the request session to `request.state.db`, and
+`CommitSessionMiddleware` commits it when the response starts. FastAPI closes yield dependencies
+*after* sending a response, so relying on teardown would let a follow-up request race the commit.
+Do not move the commit back into `get_db` or call `db.commit()` at the end of a handler.
+
 **Routing.** Each resource has a module under `app/api/v1/endpoints/`, registered in
 `app/api/v1/router.py` with a prefix. Paths are nouns, verbs come from the HTTP method.
 

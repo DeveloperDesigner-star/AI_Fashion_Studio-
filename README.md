@@ -5,7 +5,7 @@ component-level garment editor, a WebGL fitting room, print preparation, and a q
 marketplace between clients and workshops.
 
 **Status: Phases 1–10 complete — full repository audit and production-readiness pass done on
-2026-10-30, with mobile delivery and Vercel preparation updated 2026-11-01.** All gates are green: 205 backend tests, 180 frontend tests, 24 Playwright end-to-end
+2026-10-30, with mobile delivery and Vercel preparation updated 2026-11-01.** All gates are green: 206 backend tests, 180 frontend tests, 24 Playwright end-to-end
 tests, Ruff/ESLint/TypeScript clean, a production build, zero known Python dependency advisories and
 zero runtime npm advisories. (Eleven moderate advisories remain in the dev-only ESLint/minimatch
 toolchain; they are not shipped in the browser bundle.) The audit found and fixed a render-time navigation bug, duplicate React keys,
@@ -293,7 +293,7 @@ make check        # ruff + ESLint + tsc + Pytest + Vitest + production build
 Individually:
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest          # 205 tests
+cd backend && ../.venv/bin/python -m pytest          # 206 tests
 cd backend && ../.venv/bin/python -m ruff check app tests
 cd frontend && npm run typecheck && npm run lint
 cd frontend && npx vitest run                        # 180 tests
@@ -361,7 +361,7 @@ and retry boundary.
 Verified on 2026-10-30 against the live API, a fresh database and the Vite app; the mobile/lazy-route
 and deployment work was re-verified on 2026-11-01:
 
-- **Gate:** `make check` is green — **205 backend tests**, **180 frontend tests** in 19 files,
+- **Gate:** `make check` is green — **206 backend tests**, **180 frontend tests** in 19 files,
   Ruff, ESLint `--max-warnings 0`, TypeScript and the Vite production build.
 - **Dependencies:** `pip-audit` initially reported **99 known advisories in 6 packages**
   (Pillow, Starlette, python-multipart, pydantic-settings, ecdsa and python-jose). FastAPI, Uvicorn,

@@ -16,6 +16,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.db.session import CommitSessionMiddleware
 
 logging.basicConfig(
     level=logging.DEBUG if settings.debug and not settings.is_production else logging.INFO,
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if not settings.is_production else None,
     )
 
+    application.add_middleware(CommitSessionMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,

@@ -183,7 +183,7 @@ Production checklist:
 make check        # ruff + eslint + tsc + pytest + vitest + production build
 ```
 
-Expected in the Phase 10 release: Ruff clean, ESLint clean, TypeScript clean, **205 backend tests**,
+Expected in the Phase 10 release: Ruff clean, ESLint clean, TypeScript clean, **206 backend tests**,
 **180 frontend tests** in 19 files, and a successful Vite build. Then confirm both servers respond as
 shown in step 6.
 
