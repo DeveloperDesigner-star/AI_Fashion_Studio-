@@ -1,0 +1,28 @@
+{
+  "models": [
+    {
+      "id": "willow",
+      "label": "Willow",
+      "file": "avatar-willow.glb",
+      "bytes": 86172
+    },
+    {
+      "id": "atlas",
+      "label": "Atlas",
+      "file": "avatar-atlas.glb",
+      "bytes": 77080
+    },
+    {
+      "id": "line",
+      "label": "Line",
+      "file": "avatar-line.glb",
+      "bytes": 77072
+    },
+    {
+      "id": "curve",
+      "label": "Curve",
+      "file": "avatar-curve.glb",
+      "bytes": 85028
+    }
+  ]
+}

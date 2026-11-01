@@ -1,0 +1,424 @@
+# Architecture
+
+How AI Fashion Studio is put together, why the boundaries sit where they do, and what happens when
+an external dependency is missing.
+
+---
+
+## 1. System context
+
+```
+┌────────────────────────┐        HTTPS / JSON        ┌──────────────────────────┐
+│  Browser               │  ───────────────────────▶  │  FastAPI (uvicorn)       │
+│  React 19 + Vite       │  ◀───────────────────────  │  /api/v1/*               │
+│  React Three Fiber     │   access token (memory)    │  Pydantic · SQLAlchemy   │
+│  TanStack Query        │   refresh cookie (httpOnly)│  Pillow · OpenCV         │
+└────────────────────────┘                            └───────────┬──────────────┘
+                                                                  │
+                                              ┌───────────────────┼───────────────────┐
+                                              │                   │                   │
+                                        ┌─────▼─────┐      ┌──────▼──────┐     ┌──────▼──────┐
+                                        │PostgreSQL │      │ Uploads dir │     │ Free-tier   │
+                                        │ (SQLite   │      │ (private,   │     │ AI APIs     │
+                                        │ for dev)  │      │  volumes)   │     │ Gemini/Groq │
+                                        └───────────┘      └─────────────┘     └─────────────┘
+```
+
+The frontend is a static SPA. In development Vite proxies `/api`; in the container image nginx does.
+The browser therefore always talks to one origin and no secret ever reaches client code.
+
+---
+
+## 2. Layers
+
+### Presentation (frontend)
+
+- **Routing** — React Router 7 with a single `AppShell` layout. Every page is a separate lazy chunk
+  wrapped in `AsyncBoundary` (loading skeleton + retry if a chunk fails), so a phone does not download
+  the 3D engine or admin dashboard to open the landing page. `ProtectedRoute` gates authenticated
+  pages and admin screens.
+- **Server state** — TanStack Query. Query keys are centralised in `qk`; fetchers in
+  `fetchers`; mutations invalidate key prefixes. Caching defaults to 5xx-retry with 4xx short-circuit.
+- **Client state** — Zustand: `authStore` (user, in-memory access token, bootstrap), `studioStore`
+  (fitting-room items, viewer toggles, slot exclusivity), `toastStore`.
+- **Visuals** — no stock photography. `GarmentArt` draws each garment from its silhouette, palette
+  and component customisations as SVG; `Figure`/`AvatarScene` build a parametric mannequin in
+  Three.js from `AvatarParameters`. The fitting room goes further: it loads skinned GLB bodies and a
+  fitted sample wardrobe, and the scene reports loading progress and errors. If WebGL is missing it
+  says so explicitly (with a retry action) rather than substituting a screenshot.
+- **Design studio** — `DesignStage` renders a 240×320 technical flat from the reusable component
+  kinds in `lib/designLayout.ts`. Each piece is filled with its own colour, a procedural pattern
+  (`lib/fabricTexture.ts`, shared with the 3D studio) and its artwork layers, clipped to the piece.
+  Layers are positioned in stage coordinates, transformed in the SVG and never flattened in state.
+  `useDesignHistory` keeps a 50-step undo/redo stack around the component map; a drag records one
+  step while the pointer is down. Export clones the SVG, inlines private images as data URLs and
+  rasterises to PNG (`lib/stageExport.ts`) before uploading it as the design proof.
+- **Design system** — Tailwind 4 `@theme` tokens (ink, paper, bone, sand, line, clay, olive, gold,
+  oxblood) plus composition utilities (`shell`, `eyebrow`, `display-*`, `label-xs`). Primitives in
+  `components/ui` keep spacing, focus states and typography consistent.
+
+### Application (FastAPI)
+
+- **Routers** per resource under `app/api/v1/endpoints/`, mounted by `app/api/v1/router.py`.
+- **Dependencies** — `DbSession` yields a scoped session; `CurrentUser` decodes the Bearer token;
+  `AdminUser` adds a role check.
+- **Schemas** — Pydantic v2 models define the wire contract and validation. Domain enums are stored
+  as strings so migrations stay simple.
+- **Rate limiting** — `core/rate_limit.py` enforces per-IP buckets (global, auth, upload) in-process.
+  It is intentionally simple and documented as single-node; put a shared store in front before
+  scaling horizontally.
+- **Error contract** — `{"detail": {"code", "message", "fields"?}}` for domain errors; FastAPI's 422
+  shape for validation. The client maps both to `ApiError`.
+
+### Domain services
+
+| Service | Responsibility |
+|---|---|
+| `services/sizing.py` | Rule-based size recommendation from bust/waist/hips against a published-style chart; returns confidence, alternates and notes |
+| `services/avatar_params.py` | Derives proportions (head, shoulder, torso, leg, inseam) from height/weight/measurements |
+| `services/imaging.py` | Upload validation, EXIF transpose, resize, thumbnails, palette extraction, framing metrics, print sheets |
+| `services/print_jobs.py` | Print packages: per-component PNGs, effective-DPI/colour/transparency reporting, local PDF writer (exact physical size, SMask), ZIP manifest |
+| `services/orders.py` | Ten-state production workflow: allowed transitions, actor rules, immutable `OrderEvent` audit trail |
+| `services/ai/registry.py` | Provider selection (Gemini → Groq → OpenAI-off → local), toggles, timeouts, quotas |
+| `services/ai/local_stylist.py` | Deterministic catalogue styling used when no provider is usable |
+| `services/audit.py` | Append-only audit entries for security-sensitive actions |
+| `services/access.py` | Suspension lifecycle, including automatic lifting at expiry |
+| `services/privacy.py` | Account erasure shared by user and administrator flows; media file deletion and consent records |
+| `services/taxonomy.py` | Database-backed categories, catalogue styles and profile styles with usage counts and public payload assembly |
+| `services/ai/spending.py` | Persisted AI daily/monthly spending controls and the global pause switch |
+| `services/export.py` | Technical-pack and account data export |
+
+---
+
+## 3. Data model
+
+```
+users ──1:1── profiles ──1:1── measurements
+  │               ├──1:N── avatars ──N:M── media_assets (photo references)
+  │               └──N:1── media_assets (profile photo)
+  ├──1:N── refresh_tokens
+  ├──1:N── designs ──N:1── garments
+  ├──1:N── outfits ──1:N── outfit_items ──N:1── garments
+  │                          └──N:1── designs
+  ├──1:N── media_assets
+  ├──1:N── favorites ──N:1── garments
+  ├──1:N── notifications
+  └──1:N── quote_requests ──N:1── businesses
+                    ├──1:N── quotes
+                    └──1:N── quote_messages
+
+garments ──1:N── designs                ai_requests · provider_settings
+looks ──many:many (by slug)── garments  audit_logs
+                                       ai_spending_policies
+
+users ──1:N── user_reports              order_disputes ──N:1── quote_requests
+  │      ──1:N── account_suspensions     ├──N:1── users (opener)
+  │      ──1:N── consent_records         └──N:1── users (resolver)
+  └──1:N── account_deletion_requests
+
+catalog_terms (kind: category | style | profile_style)
+```
+
+Key invariants enforced server-side:
+
+- One primary avatar per user; avatar count capped (`MAX_AVATARS_PER_USER`).
+- A favourite is unique per `(user, garment)`; hiding a garment (`is_active = false`) keeps every
+  design and outfit that references it valid while removing it from discovery.
+- Catalogue vocabulary is enforced server-side: `category`, `slot`, `styles`, `occasions`, `season`
+  and `fit` are validated against the enums in `models/enums.py`, and filters accept comma-separated
+  values for multi-select browsing.
+- An avatar references only bundled base models (`willow`, `atlas`, `line`, `curve`) and only media
+  owned by the same user. Photo references require a recorded consent timestamp.
+- An outfit holds at most one garment per exclusive slot; `dress` cannot coexist with `top`/`bottom`.
+  Accessories (`bag`, `watch`, `accessory`, `headwear`) may stack.
+- Designs respect per-user caps and ownership; print components and artwork layers must reference
+  media owned by the same user. A design stores `revision` for optimistic concurrency (a stale
+  `PATCH` returns 409) and keeps `source_design_id` on copies.
+- Component ids must exist on the garment, fabric and pattern vocabulary are validated server-side,
+  and each component may hold at most 8 layers (40 per design). Layer crops are validated to stay
+  inside the source image.
+- Quote state transitions are validated (only an offered quote can be accepted/declined).
+- Account deletion is a soft delete that revokes sessions and hides studio data.
+
+PostgreSQL is the production target; SQLite is supported for tests and quick starts. JSON columns
+hold component customisations, palettes and outfit covers, keeping the schema stable while the
+editor evolves.
+
+### Design studio document (Phase 4)
+
+```
+designs
+  ├── garment_id ──▶ garments.components[]  (reusable piece templates + `kind`)
+  ├── revision                              optimistic save token
+  ├── source_design_id                      set on duplicates
+  ├── proof_asset_id ──▶ media_assets       flattened PNG, written only on export
+  └── components: {                          JSON, one entry per customised piece
+        "<component_id>": {
+          color, fabric, pattern, embroidery, pattern_scale, pattern_rotation,
+          print_asset_id,
+          layers: [{ id, name, asset_id, transform{x,y,width,height,rotation,opacity,flip_x},
+                     crop{x,y,width,height}, adjustments{brightness,contrast,saturation,hue},
+                     blend_mode, visible, locked, z_index }]
+        }
+      }
+```
+
+`app/db/component_templates.py` derives the component list from a garment's silhouette/category, so
+every catalogue row — including the eight-piece women's shalwar kameez, menswear shirts, kurtas,
+waistcoats, sherwanis, suits, trousers, knitwear, footwear and accessories — has a garment-specific
+vocabulary. Serving data comes from `GET /api/v1/designs/library`.
+
+Media derived from a design layer (`POST /media/{id}/remove-background`, `POST /media/{id}/crop`) is
+written as a new PNG asset with its alpha channel intact; the source asset is never mutated. The
+proof endpoint (`POST /designs/{id}/proof`) is the only place a design is flattened.
+
+### Avatar pipeline
+
+```
+profile.height_cm / optional measurements
+        │
+        ▼
+services/sizing.derive_parameters      → metre-based proportions
+        │                               (population averages fill the gaps)
+        ▼
+services/avatar_models.apply_adjustments → clamp + apply 5 manual multipliers
+        │
+        ▼
+avatars.parameters (JSON) ──► GET /avatars ──► GlbAvatar (React Three Fiber)
+                                            └─ GLTFExporter (browser download)
+```
+
+- Base models are generated by `scripts/build_avatar_models.py` (numpy + trimesh) into
+  `frontend/public/models/avatar-*.glb`. Each is ~77–86 kB, authored in metres with the feet at
+  `Y = 0`, facing `+Z`, and exposes named nodes: `body_torso`, `body_neck`, `body_head`, `arm_left`,
+  `arm_right`, `leg_left`, `leg_right`, `hair`.
+- The browser applies the same multipliers the server stores: height scales uniformly, volume drives
+  chest/waist/hip breadth, the shoulder slider moves the arms, and torso/leg sliders change vertical
+  proportions. Skin tone and hair colour are material overrides; the base mesh stays bundled so the
+  app never fetches arbitrary geometry from an API response.
+- Regions not covered by user-provided numbers are filled with population averages and reported in
+  `measurement_notes`, so the UI can say which values were assumed.
+- Regeneration (`POST /avatars/{id}/regenerate`) re-derives parameters from the current profile,
+  re-applies the stored manual adjustments, and increments `version`. It never consults photos.
+- Reference photos (front/side/back/full body/profile) are stored privately, validated for type,
+  size, 480 px minimum edge and portrait framing, and served only through authenticated media
+  endpoints. No body reconstruction or measurement inference is performed.
+
+### Rigged fitting room
+
+```
+/fitting-room
+  ├─ saved avatars (GET /avatars) ──► rigged-models.json ──► female | male GLB
+  ├─ presentation / proportions ─────► RiggedAvatar (skinned mesh, bone-free transforms)
+  ├─ wardrobe rail (catalogue + slots) ► slot mapping → authored garment meshes
+  └─ saved outfit (GET /outfits) ────► same mapping, per-slot sample status
+```
+
+- `scripts/build_rigged_avatars.py` writes `frontend/public/models/rig/rigged-female.glb`,
+  `rigged-male.glb` and the manifest. Each body is a single skinned mesh (19 bones: hips, spine,
+  chest, neck, head, shoulders, arms, hands, thighs, shins, feet) with `idle`, `walk` and `turn`
+  animation clips. Children share the skeleton, so garments and shoes follow the walk cycle instead
+  of floating.
+- The authored wardrobe samples cover kameez/kurta top and sleeves, shalwar/trouser legs, a waistcoat
+  shell, a dupatta, flat shoes, a tote, watch bands and a cap. Each mesh is assigned a bone-influence
+  set at build time; slot mapping is the only bridge from catalogue data to geometry.
+- Because geometry is authored, not generated from arbitrary catalogue records, **the fitting room
+  never claims a random garment is fitted in 3D**. Mapping rules return either a sample (with a label
+  such as “Rigged 3D sample”) or `2D only · no 3D sample`; fidelity is surfaced in the UI.
+- Saved design components are not flattened. Their colours are read per component and applied to the
+  matched sample materials (`garment_top`, sleeves, bottom, outer, dupatta, footwear, accessories).
+- Proportions from the saved avatar (height, build, shoulder, torso, legs) are applied to the rig;
+  leg-length changes translate the body so the authored ankle height stays on the floor.
+- Camera and animation state live in the viewport, not the URL: front/¾/side/back presets, orbit,
+  pan, wheel/pinch zoom, reset, turntable, play/pause, speed and clip selection. Fullscreen uses the
+  native API where available and an expanded fixed layout otherwise.
+- Quality is chosen at mount: mobile widths use DPR ≤ 1.5, no antialiasing and no contact shadows;
+  wider screens keep shadows and antialiasing. Rendering pauses while the document is hidden. The
+  asset test suite enforces per-file byte and triangle budgets so a careless rebuild cannot silently
+  ship a multi-megabyte model.
+
+### Catalogue structure
+
+```
+garments ──category──▶ product type   (saree, kurta_pajama, formal_shoes, handbag …)
+         ──slot──────▶ fitting layer  (dress, top, bottom, outerwear, footwear, bag, watch, accessory, headwear)
+         ──styles────▶ discovery      (traditional, modern, minimalist, luxury, streetwear, vintage …)
+         ──occasions─▶ collections    (wedding, party, casual, formal, everyday, office, festive)
+         ──season────▶ seasonal rail  (all-season, spring-summer, autumn-winter, festive, resort)
+```
+
+- `backend/app/db/catalog_data.py` holds the authored catalogue (125 pieces across four departments).
+  Templates describe a garment type and variants add colourways, price deltas and style tags; the
+  seeder expands them and upserts by slug, so re-seeding is idempotent and never duplicates rows.
+- `services/catalog.py` owns labels and department grouping. `/catalog/taxonomy` returns the grouped
+  navigation with live counts, so the frontend never hardcodes a product list.
+- Discovery filters are composable (`gender`, `category`, `slot`, `style`, `occasion`, `season`, `fit`,
+  `q`, price range, `favorites_only`) and return scoped facets plus a price range for the rail.
+- Artwork remains procedural: `GarmentArt` maps every silhouette/slot pair to original SVG, and a
+  Vitest suite renders all 50 seeded pairs so a new silhouette cannot ship as a blank card.
+- Catalogue management lives under `/admin/catalog`: create, patch (price, styles, visibility,
+  feature flag) and soft-delete, each writing to the audit trail.
+
+---
+
+## 4. Authentication & security
+
+1. **Register/login** verifies the password (Argon2id via `pwdlib`) and returns a JWT access token
+   (30 min, memory only) plus an httpOnly refresh cookie (14 days, `SameSite=Lax`, `Secure` in
+   production). A split Vercel frontend + separate API deployment uses `SameSite=None; Secure`
+   with an exact CORS origin.
+2. **Refresh** rotates the refresh token: the presented token is revoked and linked to its successor,
+   so replay of a used token fails.
+3. **Requests** carry `Authorization: Bearer <access>`. No access token is stored in
+   `localStorage`, limiting XSS blast radius.
+4. **Sign out** revokes the current refresh token; **sign out everywhere** revokes all of them.
+5. **Passwords** require 10+ characters with mixed classes; changes revoke every other session.
+6. **Uploads** are content-type sniffed, size/pixel limited, stored outside the web root, and served
+   only through an authenticated endpoint with cache headers.
+7. **Rate limits** apply to auth, uploads and general traffic; **audit logs** record admin actions,
+   provider changes and account events.
+8. **Headers**: nginx (and Vercel) set `X-Content-Type-Options`, `X-Frame-Options`,
+   `Referrer-Policy`, `Permissions-Policy` and a restrictive `Content-Security-Policy`; the API
+   restricts CORS to configured origins and adds HSTS/CSP in production.
+
+---
+
+## 5. AI architecture and cost policy
+
+```
+request ─▶ auth + rate limit ─▶ quota ─▶ task/capability check
+                                              │
+                                              ▼
+                                   effective provider chain
+                                   (admin priority, not hardcoded)
+                                              │
+             ┌────────────────────────────────┼──────────────────────────────┐
+             ▼                                ▼                              ▼
+      Gemini (primary)                   Groq (secondary)              OpenAI (tertiary)
+      text + vision, free tier           text only, free tier          text + vision, billed,
+                                                                        both paid gates required
+             │                                │                              │
+             └──────────── retryable failures ─┴──── fallback ────────────────┘
+                                              │
+                                              ▼
+                     ai_provider_attempts (every call, sanitised)
+                     ai_fallback_events  (every provider switch)
+                     ai_requests         (final outcome, tokens, cost)
+```
+
+**Task matrix.** Every text-capable provider serves chat, fashion recommendations, style
+recommendations, outfit combinations, design descriptions, colour suggestions and design prompts.
+Only vision-capable providers serve reference-image analysis and pattern identification. The
+registry checks the matrix before calling; Groq never receives an image.
+
+**Fallback policy.**
+
+- Administrators persist provider priority in `provider_settings.priority`; the default order comes
+  from `AI_PROVIDER_ORDER`.
+- Only providers that are configured, enabled, past the paid gate and capable of the task join the
+  chain.
+- HTTP 408/409/425/429/5xx and transport timeouts are retryable. A retryable failure can be retried
+  inside the same provider up to `AI_PROVIDER_RETRIES` (default 0) and always advances to the next
+  provider. Non-retryable failures also advance rather than leaving the user without a result.
+- `AI_MAX_PROVIDER_ATTEMPTS` (default 3) is a hard per-request cap and the client cannot raise it.
+  Each request has `AI_REQUEST_TIMEOUT` seconds. There is no unbounded retry loop.
+- Every attempt gets an `ai_provider_attempts` row with provider, model, status, token counts,
+  latency, estimated cost and a redacted error. Every switch gets an `ai_fallback_events` row.
+
+**Cost controls.**
+
+- OpenAI is billed and inert unless the server has a key **and** `OPENAI_ENABLED=true` **and**
+  `AI_PAID_USAGE_ENABLED=true`. The admin UI explains that toggling `enabled` alone cannot start
+  billing. No capacity is auto-purchased.
+- Per-user daily request and token quotas (`AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT`) are
+  enforced before routing. Rule-based replies count as one request so free infrastructure stays
+  fair.
+- Cost is estimated from published list prices for known models
+  (`services/ai/costs.py`) and stored per attempt/request; unknown models return `NULL` rather than a
+  fabricated figure. Free-tier list value may not be billed, and the UI says so.
+- Prompts and images are never persisted. Errors are truncated and redacted for common key and
+  bearer formats before they reach the database or admin API.
+
+**Admin surface.** Provider settings (order, enable, text/vision model, reset), a real connection
+probe, `/admin/ai-usage`, `/admin/ai-errors` and `/admin/ai-fallbacks`. Every mutation writes to the
+audit trail. API keys are shown only as an environment-variable *name* plus present/missing.
+
+When no provider is usable, chat uses the deterministic local stylist and labels it
+`mode: "rule_based"`; task and vision endpoints return `mode: "unavailable"` with a notice. Nothing
+is fabricated.
+
+## 6. Media pipeline
+
+```
+upload ─▶ validate MIME + pixels ─▶ EXIF transpose ─▶ bound size (long edge) ─▶ thumbnail
+       ─▶ store as <uuid>.<ext> ─▶ media_assets row (owner, kind, bytes, dimensions)
+```
+
+Derived data:
+
+- **Palette** — k-means/quantised dominant colours via Pillow/OpenCV.
+- **Framing metrics** — resolution, orientation, sharpness estimate, subject-margin checks, plus a
+  score and plain-language advice. Explicitly labelled as pixel metrics, not body measurements.
+- **Print sheet** — placement-aware composite with bleed and DPI metadata for atelier handoff.
+- **Cut-out** — OpenCV GrabCut with a corner-colour fallback, feathered alpha, stored as PNG. Used by
+  the design studio's background-removal action; the original upload stays untouched.
+- **Crop** — normalised crop baked into a new PNG (non-destructive crops also live in design layers).
+
+Uploads are private: content is streamed only to the owner (or an admin) through an authenticated
+route, and the client converts it to a blob URL via `useMediaUrl` (cached, revoked on unmount).
+
+---
+
+## 7. Marketplace & production flow
+
+1. A user saves an outfit (components + measurement snapshot).
+2. They submit a **quote request** to a studio (or to the network) with a brief, quantity, budget and
+   optional outfit attachment.
+3. Studios reply with **quotes** (amount, lead time, notes). Clients accept or decline; status moves
+   `submitted → quoted → confirmed → in_production → shipped → completed`.
+4. A **technical pack** (JSON/PDF-ready data, measurements, component specs, print proof) can be
+   exported from the outfit library at any point.
+5. Admin can verify studios and inspect requests; every modification is audited.
+
+The platform intentionally does not process payments — settlement happens between client and studio.
+
+---
+
+## 8. Deployment topology
+
+```
+            ┌─────────────┐        ┌────────────────────┐       ┌──────────────┐
+  users ──▶ │ nginx (web) │ ─────▶ │ uvicorn (api) x N  │ ────▶ │ PostgreSQL   │
+            │ static SPA  │  /api  │ stateless          │       │ + backups    │
+            └─────────────┘        └─────────┬──────────┘       └──────────────┘
+                                             │
+                                     ┌───────▼────────┐
+                                     │ uploads volume │
+                                     └────────────────┘
+```
+
+- The API is stateless apart from uploads; scale horizontally behind a load balancer, but move rate
+  limiting and quotas to a shared store first.
+- Refresh cookies normally require a single cookie domain. For the prepared Vercel split, the SPA
+  and API are different sites: set `CORS_ORIGINS` to the Vercel origin and
+  `COOKIE_SAMESITE=none` + `COOKIE_SECURE=true`; the API remains the cookie’s host.
+- Vercel hosts only `frontend/dist`. FastAPI, PostgreSQL, migrations and the private uploads volume
+  are deployed separately; `VITE_API_BASE_URL` must be the public absolute `/api/v1` URL and the
+  build guard rejects a relative/localhost value. See `docs/VERCEL.md`.
+- Health endpoint: `GET /api/v1/health` (also used by container healthchecks).
+- Migrations run from the entrypoint before workers start; run them once per release in orchestrated
+  environments.
+- No cloud GPUs, no paid AI tiers and no managed ML services are part of the architecture.
+
+---
+
+## 9. Deliberate trade-offs
+
+| Decision | Why | Cost |
+|---|---|---|
+| Procedural garment art instead of photography | Zero licensing cost, unlimited colourways, consistent look | Less photoreal than a rendered lookbook |
+| Authored 3D sample wardrobe, no cloth simulation | Runs on client GPUs for free; deterministic; no false auto-fit claims | Only the shipped sample silhouettes appear in 3D; other pieces are explicitly 2D |
+| In-process rate limiting | Simple, no extra infrastructure | Not shared across replicas |
+| SQLite support alongside PostgreSQL | Fast tests, zero-setup demos | Some Postgres-specific SQL must be avoided |
+| JSON for component specs | Editor can evolve without migrations | Requires application-level validation |
+| In-app notifications only | No email provider or cost | Users must visit the site for updates |

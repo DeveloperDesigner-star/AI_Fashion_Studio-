@@ -1,0 +1,237 @@
+# Development guide
+
+Conventions, commands and workflows for extending AI Fashion Studio. Read
+[ARCHITECTURE.md](./ARCHITECTURE.md) first for the big picture.
+
+---
+
+## Repository layout
+
+```
+backend/
+  app/
+    api/v1/endpoints/   one module per resource (auth, profile, avatars, catalog, designs,
+                        outfits, media, ai, try_on, print_job, marketplace, notifications,
+                        admin, meta)
+    api/v1/deps.py      DbSession / CurrentUser / AdminUser dependencies
+    core/               settings, security primitives, rate limiting, logging
+    db/                 engine + session factory, catalogue seed
+    models/             SQLAlchemy 2 declarative models and enums
+    schemas/            Pydantic v2 request/response contracts
+    services/           imaging, sizing, avatar parameters, AI registry/providers/tasks/quota/costs,
+                        print preparation, export, audit
+  alembic/versions/     migrations (baseline through Phase 9)
+  scripts/              init_db.py, create_admin.py, docker-entrypoint.sh
+  tests/                Pytest suite (isolated SQLite + temp media root)
+frontend/
+  src/pages/            one component per route
+  src/components/ui/    design-system primitives (Button, Field, Modal, Primitives…)
+  src/components/…      layout, garment art (SVG), three (R3F scene, textures)
+  src/lib/              api client, types, query keys, formatters, preferences
+  src/stores/           auth, studio (fitting-room), toasts — Zustand
+  e2e/                  Playwright specs + synthetic portrait fixture
+  scripts/              build-time guards (Vercel environment check)
+docs/                   installation, development, architecture, API, deployment, mobile, audit
+```
+
+---
+
+## Commands
+
+| Task | Command |
+|---|---|
+| API with reload | `make dev-api` |
+| Web with HMR | `make dev-web` |
+| Migrate | `make migrate` |
+| Seed catalogue | `make seed` |
+| Backend tests | `cd backend && ../.venv/bin/python -m pytest` |
+| Backend lint | `cd backend && ../.venv/bin/python -m ruff check app tests` |
+| Frontend typecheck | `cd frontend && npm run typecheck` |
+| Frontend lint | `cd frontend && npm run lint` |
+| Frontend unit tests | `cd frontend && npx vitest run` |
+| Production build | `cd frontend && npm run build` |
+| E2E (installs Chromium once) | `cd frontend && npm run e2e:install && E2E_PORT=5173 npm run e2e -- --workers=1` |
+| Everything | `make check` |
+
+`make check` is the pre-commit gate. Do not commit with a red gate.
+
+---
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request and on `main`:
+
+- **Backend:** install dev requirements, Ruff, Pytest and `pip-audit` against runtime requirements.
+- **Frontend:** `npm ci`, ESLint, `tsc --noEmit`, Vitest, production build and
+  `npm audit --omit=dev`.
+- **Browser journeys:** install Chromium, create a throwaway SQLite database, seed the catalogue,
+  start Uvicorn on `:8000`, then run all 24 Playwright tests with `--workers=1`.
+
+The browser job uses SwiftShader flags so the 3D tests run on a headless runner. A failure uploads
+the Playwright report and prints the API log. Do not merge a PR with a red required job.
+
+---
+
+## Backend conventions
+
+**Routing.** Each resource has a module under `app/api/v1/endpoints/`, registered in
+`app/api/v1/router.py` with a prefix. Paths are nouns, verbs come from the HTTP method.
+
+**Validation.** Pydantic schemas own validation, including patterns for enums stored as strings.
+Cross-field rules live in `model_validator`; business rules (slot exclusivity, quotas, ownership)
+live in services or endpoints.
+
+**Errors.** Always raise `HTTPException` with a structured detail:
+
+```python
+raise HTTPException(
+    status_code=404,
+    detail={"code": "not_found", "message": "Garment not found."},
+)
+```
+
+The frontend maps this into `ApiError.status/code/message/fields`. Validation errors keep FastAPI's
+422 shape; the client renders the first field message.
+
+**Auth.** `CurrentUser` decodes the Bearer access token; `AdminUser` additionally checks the role.
+Ownership checks are explicit (`where(Model.user_id == user.id)`), never implied by the route.
+
+**Auditing.** Security-sensitive actions call `audit.record(db, action=…, user=…, resource_type=…)`.
+Rows are visible to admins under `/admin/audit-logs`.
+
+**Media.** Uploads always go through `services/imaging.py`: content-type sniffing, pixel limits,
+EXIF normalisation, thumbnail generation. Files are private and served by an authenticated endpoint.
+
+**AI.** Never call a provider directly from an endpoint. Use `services/ai/registry.py` so routing,
+provider toggles, timeouts, quota accounting and the offline fallback stay consistent. If no
+provider is usable, return the rule-based/unavailable shape instead of inventing output.
+
+### Adding an endpoint
+
+1. Add or extend the Pydantic schema in `app/schemas/`.
+2. Implement the endpoint with `DbSession`/`CurrentUser` dependencies.
+3. Register it in the router module if it is a new resource.
+4. Add a Pytest case covering the happy path and at least one rejection.
+5. Run `ruff check app tests --fix` (it sorts imports) and `pytest`.
+
+### Migrations
+
+```bash
+cd backend
+../.venv/bin/alembic revision --autogenerate -m "add something"
+../.venv/bin/alembic upgrade head
+```
+
+Review generated files: Alembic misses server defaults and enum changes. Never edit an applied
+migration that others may have run; add a new one.
+
+---
+
+## Frontend conventions
+
+**Pages** are route components in `src/pages/`; they own data fetching and layout composition.
+Shared logic belongs in `src/lib/` or `src/stores/`.
+
+**Data fetching** always goes through TanStack Query with keys from `qk` and functions from
+`fetchers` (`src/lib/queries.ts`). Mutations invalidate the relevant key prefix. Do not call `fetch`
+directly — use `api.get/post/patch/put/delete/upload/raw` so auth, error mapping and JSON handling
+stay in one place.
+
+**State.** Zustand stores hold only client state: auth session (access token in memory), fitting-room
+items and viewer toggles, toasts. Server data never lives in a store.
+
+**Design system.** Colours and typography come from the Tailwind theme in `src/index.css`
+(`ink`, `paper`, `bone`, `sand`, `line`, `clay`, `olive`, `gold`, `oxblood`). Use the utility classes
+`shell`, `eyebrow`, `display-lg`, `label-xs` rather than ad-hoc values. Buttons, fields, modals and
+badges come from `components/ui/`; add variants there instead of restyling per page.
+
+**Accessibility.** Every control is keyboard reachable, icon-only buttons need `aria-label`, live
+regions announce async state (`role="status"`), tables use `th`/`caption`, and the shell provides a
+skip link. Respect `prefers-reduced-motion` and the explicit "Reduce motion" setting.
+
+**Honesty rule.** If a capability depends on missing credentials or hardware, the UI must say so
+(disabled state, "unavailable" notice, or a documented limitation) — never a fake success path.
+
+### Adding a page
+
+1. Create `src/pages/YourPage.tsx` exporting a named component.
+2. Register the route in `src/App.tsx`; wrap with `protectedPage()` if it needs a session, and
+   `protectedPage(<Page />, true)` for admin-only screens.
+3. Add navigation only where it genuinely belongs (header, account menu or footer).
+4. Reuse `PageHeader`, `EmptyState`, `ErrorState`, `Skeleton` so loading/error/empty states match.
+5. Add a unit test if the page owns non-trivial logic; otherwise cover the helper it uses.
+6. Register it with a `lazy()` import in `src/App.tsx` so mobile first paint stays small.
+
+---
+
+## Testing
+
+**Backend** (`backend/tests/`): `conftest.py` builds a fresh in-memory SQLite database per test,
+points `MEDIA_ROOT` at a temp directory, seeds the catalogue and exposes `client`, `auth` (registered
+user headers) and `admin` fixtures. Tests assert status codes and JSON contracts, not internals.
+
+**Frontend** (`src/**/*.test.ts(x)`): Vitest with jsdom and Testing Library matchers. Coverage focuses
+on deterministic logic — formatters, fitting-room slot rules, display preferences, catalogue filter
+URLs/labels (`src/lib/catalog.test.ts`), avatar adjustment/GLB-scaling helpers, static rendering of
+every seeded garment silhouette (`src/components/garment/GarmentArt.test.tsx`), and the admin
+dashboard's report review, access/suspension, erasure approval and taxonomy visibility flows
+(`src/pages/admin.test.tsx`). Backend suites `test_admin.py` and `test_admin_phase9.py` cover the
+authorisation matrix, suspensions, moderation, taxonomy, spending controls and privacy workflows.
+
+**E2E** (`frontend/e2e/`): **24 Playwright tests** across six specs. The suite covers the public
+shell and login validation (`smoke`), API ownership/upload/role/AI-honesty boundaries (`api`),
+catalogue (`catalog`), avatar studio (`avatar`) and the full journeys: a 27-route desktop sweep, the
+same routes at 390 px, registration → onboarding → rigged 3D, profile, layered design → print
+package, business, administration and animated 3D on an emulated Pixel 5 (`journey`).
+
+```bash
+cd frontend
+npm run e2e:install                     # once per machine (downloads Chromium)
+E2E_PORT=5173 \
+E2E_ADMIN_EMAIL=you@example.com \
+E2E_ADMIN_PASSWORD='your-admin-password' \
+npm run e2e -- --workers=1
+```
+
+- `E2E_PORT` targets an already-running Vite server; `E2E_BASE_URL` targets an already-running site.
+- The admin test **skips** when the admin variables are unset.
+- `E2E_EXECUTABLE_PATH` + `E2E_BROWSER_ARGS` let a restricted sandbox use its own Chromium and
+  SwiftShader (`--use-angle=swiftshader --enable-unsafe-swiftshader --no-sandbox`).
+- The portrait fixture is synthetic (600×900 PNG), so no personal photo enters the repository.
+- Run with `--workers=1` against a single SQLite API: parallel tests create accounts and uploads
+  and the shared rate limiter makes higher concurrency flaky.
+
+Lazy routes: `frontend/src/App.tsx` uses `React.lazy` for every page and wraps them in
+`AsyncBoundary` (suspense skeleton + retry on a failed chunk). Add a new page with a lazy import and
+`page(<YourPage />)` rather than a static import, or the initial bundle will grow.
+
+---
+
+## Git workflow
+
+- Work on a feature branch and keep commits small and descriptive.
+- Never commit `.env`, keys, uploads, `node_modules`, `.venv`, build output or databases.
+- Run `make check` before pushing.
+- Describe behaviour changes in the commit body when the diff alone is not obvious.
+
+---
+
+## Common tasks
+
+| I want to… | Do this |
+|---|---|
+| Add a catalogue garment | Add a template or variant in `backend/app/db/catalog_data.py`, then re-run `make seed` (idempotent upsert by slug) |
+| Add a garment category | Extend `GarmentCategory` + `CATEGORY_LABELS`/`CATEGORY_GROUPS`, then add catalogue templates |
+| Add a silhouette | Draw it in `frontend/src/components/garment/GarmentArt.tsx` and add the pair to `GarmentArt.test.tsx` |
+| Add a garment slot | Update `GarmentSlot` enum, the frontend `SLOT_LABELS`/`SLOT_ORDER`, and the fitting-room rules |
+| Change the assistant prompt | `backend/app/services/ai/prompts.py`; keep catalogue and size context injected by the service |
+| Change a studio-task prompt | `backend/app/services/ai/tasks.py` (`TASKS`); modality, tokens and system prompt live together |
+| Add a provider | Implement the adapter in `backend/app/services/ai/providers.py`, add it to `PROVIDERS` and `PROVIDER_ENV_KEYS`, declare vision support, and respect both paid gates where billed |
+| Tune fallback/retries | `AI_PROVIDER_ORDER`, `AI_MAX_PROVIDER_ATTEMPTS`, `AI_PROVIDER_RETRIES`, `AI_RETRY_BACKOFF_SECONDS`, `AI_REQUEST_TIMEOUT`; no per-request override exists |
+| Add a UI task | Add it to `TASKS`, expose a named route in `endpoints/ai.py` if needed, and add it to `TOOL_ORDER` in `AssistantPage.tsx` |
+| Add a design token | Extend the `@theme` block in `src/index.css` |
+| Rebuild the avatar GLB models | `python scripts/build_avatar_models.py` (writes `frontend/public/models/*.glb` + manifest) |
+| Rebuild the rigged fitting-room assets | `python scripts/build_rigged_avatars.py` (writes `frontend/public/models/rig/*.glb` + manifest; keep within the asset-test budgets) |
+| Add a 3D garment sample | Author a skinned mesh in `scripts/build_rigged_avatars.py`, extend `rigged-models.json` and the slot mapping, then update `riggedAssets.test.ts` and the fidelity labels |
+| Add or tune a base avatar | `backend/app/services/avatar_models.py` (`BASE_MODELS`) — keep `asset_url` in sync with the generated GLB |
+| Change upload limits | `MAX_UPLOAD_MB`, `MAX_IMAGE_PIXELS` in `.env` (and `client_max_body_size` in nginx) |

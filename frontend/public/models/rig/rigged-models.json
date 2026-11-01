@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "generator": "scripts/build_rigged_avatars.py",
+  "note": "Authored sample wardrobe, skinned to the shared AtelierRig skeleton. Not a garment auto-fit system.",
+  "models": [
+    {
+      "id": "female",
+      "label": "Atelier female",
+      "presentation": "feminine",
+      "file": "rigged-female.glb",
+      "bytes": 296400,
+      "bones": 19,
+      "meshes": 23,
+      "vertices": 4277,
+      "triangles": 6664,
+      "animations": [
+        {
+          "id": "idle",
+          "duration": 4.0,
+          "loop": true
+        },
+        {
+          "id": "walk",
+          "duration": 1.2,
+          "loop": true
+        },
+        {
+          "id": "turn",
+          "duration": 1.8,
+          "loop": false
+        }
+      ],
+      "pieces": [
+        "body_torso",
+        "body_neck",
+        "body_head",
+        "body_arm_l",
+        "body_arm_r",
+        "body_leg_l",
+        "body_leg_r",
+        "hair_short",
+        "hair_bun",
+        "hair_long",
+        "garment_top",
+        "garment_sleeve_l",
+        "garment_sleeve_r",
+        "garment_bottom_l",
+        "garment_bottom_r",
+        "garment_outer",
+        "garment_dupatta",
+        "footwear_l",
+        "accessory_watch_l",
+        "footwear_r",
+        "accessory_watch_r",
+        "accessory_bag",
+        "accessory_cap"
+      ]
+    },
+    {
+      "id": "male",
+      "label": "Atelier male",
+      "presentation": "masculine",
+      "file": "rigged-male.glb",
+      "bytes": 281840,
+      "bones": 19,
+      "meshes": 23,
+      "vertices": 4007,
+      "triangles": 6216,
+      "animations": [
+        {
+          "id": "idle",
+          "duration": 4.0,
+          "loop": true
+        },
+        {
+          "id": "walk",
+          "duration": 1.2,
+          "loop": true
+        },
+        {
+          "id": "turn",
+          "duration": 1.8,
+          "loop": false
+        }
+      ],
+      "pieces": [
+        "body_torso",
+        "body_neck",
+        "body_head",
+        "body_arm_l",
+        "body_arm_r",
+        "body_leg_l",
+        "body_leg_r",
+        "hair_short",
+        "hair_bun",
+        "hair_long",
+        "garment_top",
+        "garment_sleeve_l",
+        "garment_sleeve_r",
+        "garment_bottom_l",
+        "garment_bottom_r",
+        "garment_outer",
+        "garment_dupatta",
+        "footwear_l",
+        "accessory_watch_l",
+        "footwear_r",
+        "accessory_watch_r",
+        "accessory_bag",
+        "accessory_cap"
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "id": "idle",
+      "label": "Idle",
+      "loop": true,
+      "description": "Relaxed standing breath and weight shift."
+    },
+    {
+      "id": "walk",
+      "label": "Walk",
+      "loop": true,
+      "description": "In-place walk cycle with arm swing and heel lift."
+    },
+    {
+      "id": "turn",
+      "label": "Turn",
+      "loop": false,
+      "description": "Slow pivot in place, back to the front."
+    }
+  ],
+  "slot_mapping": {
+    "dress": [
+      "garment_top",
+      "garment_sleeve_l",
+      "garment_sleeve_r"
+    ],
+    "top": [
+      "garment_top",
+      "garment_sleeve_l",
+      "garment_sleeve_r"
+    ],
+    "bottom": [
+      "garment_bottom_l",
+      "garment_bottom_r"
+    ],
+    "outerwear": [
+      "garment_outer"
+    ],
+    "footwear": [
+      "footwear_l",
+      "footwear_r"
+    ],
+    "bag": [
+      "accessory_bag"
+    ],
+    "watch": [
+      "accessory_watch_l",
+      "accessory_watch_r"
+    ],
+    "headwear": [
+      "accessory_cap"
+    ],
+    "accessory": [
+      "garment_dupatta"
+    ]
+  }
+}
