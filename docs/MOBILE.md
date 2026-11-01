@@ -7,13 +7,14 @@ to open the running preview or to test the delivered phases.
 
 ## 1. Open the preview
 
-While the Arena session is active, the website is served on the **5173** live-preview port shown in
-the conversation. Open that URL in Chrome on Android. It is the real application talking to the real
-FastAPI backend in the same sandbox:
+While the Arena session is active, open the **4173 production-preview** port shown in the
+conversation (the 5173 development server is also available). It is the real application talking to
+the real FastAPI backend in the same sandbox:
 
-- the SPA is served by Vite on `0.0.0.0:5173`;
-- `/api/*` is proxied by Vite to FastAPI on `:8000`, so cookies and uploads stay same-origin;
-- no `localhost` address is needed on the phone.
+- the built SPA is served by `vite preview` on `0.0.0.0:4173`; `5173` runs the HMR dev server;
+- `/api/*` is proxied to FastAPI on `:8000`, so cookies and uploads stay same-origin;
+- no `localhost` address is needed on the phone;
+- the production preview is the better performance check because it serves the hashed, split bundle.
 
 The preview address is session-scoped. It **is not a permanent public deployment**. A permanent link
 requires the separate Vercel frontend and a public backend described in [VERCEL.md](VERCEL.md); the
