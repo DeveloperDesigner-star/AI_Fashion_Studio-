@@ -4,12 +4,20 @@ A production-shaped web platform for AI-assisted fashion design: parametric avat
 component-level garment editor, a WebGL fitting room, print preparation, and a quoting
 marketplace between clients and workshops.
 
-**Status: Phases 1–8 implemented; the local lint/test/build gate is green.** Backend (FastAPI +
-PostgreSQL/SQLite) and frontend (React + TypeScript + Vite + Tailwind + React Three Fiber) run
-together; every screen in the route table is implemented against a real API. AI features degrade
-explicitly when no provider key is configured — they never fabricate model output. The CatVTON GPU
-worker is implemented but could not be executed in this sandbox (no CUDA); without a configured
-worker, the try-on page reports an explicit unavailable state and saves no placeholder image.
+**Status: Phases 1–10 complete — full repository audit and production-readiness pass done on
+2026-10-30.** All gates are green: 200 backend tests, 180 frontend tests, 24 Playwright end-to-end
+tests, Ruff/ESLint/TypeScript clean, a production build, zero known Python dependency advisories and
+zero runtime npm advisories. (Eleven moderate advisories remain in the dev-only ESLint/minimatch
+toolchain; they are not shipped in the browser bundle.) The audit found and fixed a render-time navigation bug, duplicate React keys,
+mobile horizontal overflow, a stale end-to-end selector, a missing client-side login check and
+outdated security-sensitive dependencies; it also added a Content-Security-Policy to the nginx
+image and split the SPA into per-route chunks so phones do not download the 3D engine or the admin
+dashboard until they are opened. Backend (FastAPI + PostgreSQL/SQLite) and frontend (React + TypeScript + Vite + Tailwind +
+React Three Fiber) run together; every screen in the route table is implemented against a real API.
+AI features degrade explicitly when no provider key is configured — they never fabricate model
+output. The CatVTON GPU worker is implemented but could not be executed in this sandbox (no CUDA);
+without a configured worker, the try-on page reports an explicit unavailable state and saves no
+placeholder image. The 10-point findings and residual risks are in [docs/AUDIT.md](docs/AUDIT.md).
 
 ---
 
@@ -93,8 +101,13 @@ worker, the try-on page reports an explicit unavailable state and saves no place
   `OPENAI_ENABLED=true` and `AI_PAID_USAGE_ENABLED=true`. An admin toggle alone cannot start
   billing; there is no automatic activation and the platform never purchases capacity, GPUs or
   paid tiers.
-- **Playwright specs are written but browsers are not bundled.** `npm run e2e:install` downloads
-  Chromium; the sandbox used for development blocked that download.
+- **Browser tests are reproducible, but not a hardware lab.** The 24 Playwright tests cover the
+  public shell, auth validation, API security, every route at desktop and 390 px, the full member
+  journey, print-package export, the business and admin journeys, and animated 3D on an emulated
+  Pixel 5. Browsers are not committed: `npm run e2e:install` downloads Chromium. Restricted
+  environments can point the runner at an existing binary with `E2E_EXECUTABLE_PATH` and
+  `E2E_BROWSER_ARGS`. Emulation is not a substitute for a physical-device GPU/thermal/battery pass;
+  that remains a release task for real handsets.
 
 ---
 
@@ -283,10 +296,46 @@ Individually:
 cd backend && ../.venv/bin/python -m pytest          # 200 tests
 cd backend && ../.venv/bin/python -m ruff check app tests
 cd frontend && npm run typecheck && npm run lint
-cd frontend && npx vitest run                        # 178 tests
+cd frontend && npx vitest run                        # 180 tests
 cd frontend && npm run build
-cd frontend && npm run e2e                           # needs `npm run e2e:install` once
 ```
+
+### End-to-end tests
+
+The Playwright suite needs both servers running (or it will start Vite itself on port 5174):
+
+```bash
+# once per machine
+cd frontend && npm run e2e:install
+
+# full suite: 24 tests
+cd frontend
+E2E_PORT=5173 \
+E2E_ADMIN_EMAIL=you@example.com \
+E2E_ADMIN_PASSWORD='your-admin-password' \
+npm run e2e -- --workers=1
+```
+
+`E2E_PORT` points the runner at an existing Vite server; `E2E_BASE_URL` does the same for an
+already-deployed site. The admin test skips when the two admin variables are absent. Sandboxes that
+cannot install Playwright's browser can set `E2E_EXECUTABLE_PATH` to a Chromium binary and
+`E2E_BROWSER_ARGS` to flags such as
+`--no-sandbox --disable-dev-shm-usage --use-angle=swiftshader --enable-unsafe-swiftshader`.
+The suite uses a synthetic portrait fixture; it does not download or ship any personal photo.
+
+Dependency audit (also part of the release checklist):
+
+```bash
+.venv/bin/pip-audit -r backend/requirements.txt
+.venv/bin/pip-audit -r backend/requirements-dev.txt
+cd frontend && npm audit --omit=dev
+```
+
+**What runs:** `smoke` (public shell and client-side login validation), `api` (anonymous/role
+boundaries, private media ownership, upload limits, AI honesty), `catalog`, `avatar`, `journey`
+(desktop 27-route sweep, 390 px sweep, registration → onboarding → rigged avatar and animation,
+profile, layered component design + print package, business profile, administration and
+emulated-mobile 3D).
 
 Backend tests run against SQLite with `DATABASE_URL=sqlite://` and cover auth (including
 sign-out-everywhere), profiles, measurement validation, account data export, catalogue, designs,
@@ -301,7 +350,56 @@ mapping/fidelity rules, responsive quality settings, the camera/animation contro
 fitting-room page wiring, Phase 6: mocked provider adapters (Gemini/Groq/OpenAI), retry/fallback
 classification, vision capability routing, admin ordering/models/connection tests, sanitised error
 logging, cost estimates and the atelier-tools UI, and Phase 9: admin reports/access review,
-security posture, erasure approval and taxonomy visibility controls.
+security posture, erasure approval and taxonomy visibility controls, plus the lazy-route loading
+and retry boundary.
+
+### Phase 10 verification (full audit & production readiness)
+
+Verified on 2026-10-30 against the live API, a fresh database and the Vite app:
+
+- **Gate:** `make check` is green — **200 backend tests**, **180 frontend tests** in 19 files,
+  Ruff, ESLint `--max-warnings 0`, TypeScript and the Vite production build.
+- **Dependencies:** `pip-audit` initially reported **99 known advisories in 6 packages**
+  (Pillow, Starlette, python-multipart, pydantic-settings, ecdsa and python-jose). FastAPI, Uvicorn,
+  Pydantic, pydantic-settings, Pillow, python-multipart and pytest were upgraded, and python-jose
+  was replaced with PyJWT. A re-audit of runtime and dev requirements reports **0 known
+  vulnerabilities**; `npm audit --omit=dev` reports 0 and `pip check` is clean. The full `npm audit`
+  reports 11 moderate dev-only advisories in the ESLint/minimatch toolchain; production dependencies
+  are unaffected, and clearing them needs an ESLint 10 migration.
+- **End-to-end:** **24/24 Playwright tests passed** (`--workers=1`, ~1.9 min) before the final
+  dependency/lazy-route hardening. This includes a 27-route desktop sweep, the same sweep at 390 px,
+  the complete registration/onboarding/3D journey, print-package PDF/ZIP export, business and admin
+  journeys, plus API security and honesty checks. The audit sandbox was reset afterwards and its
+  Chromium was unavailable, so the final commit re-ran the 200 backend + 180 frontend + production
+  build gates and live API probes; rerun `npm run e2e` in staging before release.
+- **Mobile 3D:** on an emulated Pixel 5 (393×851, DPR 2.75, touch) the rig became interactive in
+  **1.96 s**; pause/walk state changes, camera presets, fullscreen and responsive controls all
+  passed with zero horizontal overflow. This is Chromium device emulation with SwiftShader, not a
+  physical handset.
+- **Mobile delivery:** every route is now a lazy chunk with a loading skeleton and a friendly
+  retry boundary. The initial JS shell is **~100 KB gzip** (app + vendor) instead of ~230 KB, and
+  the **283.6 KB gzip** Three.js chunk is fetched only when a 3D view is opened. On a device that
+  reports ≤ 4 GB memory, a data-saver connection or 2G, the landing-page 3D preview is **opt-in**
+  with a “Load 3D preview” button; missing WebGL still falls back to the 2D illustration.
+- **Runtime defects fixed:** `LoginPage` called `navigate()` during render and accepted empty
+  submissions; `ColorField` produced duplicate React keys; the fitting room, try-on, studio,
+  accessories, settings, garment, profile and onboarding layouts overflowed at narrow widths because
+  grid children lacked `min-w-0`. No global `overflow: hidden` was used.
+- **API boundaries:** private media returned `401` anonymously and `404` to another account;
+  invalid/oversized/unknown upload kinds were rejected with `413/415/422`; member access to
+  `/admin/*` returned `403`. Documented OpenAPI operations: **186**.
+- **AI & try-on honesty:** with no keys the assistant reports `mode: rule_based`, all providers
+  report `usable: false`, and try-on reports `available: false`; no placeholder image or fabricated
+  result is stored. Live provider and GPU calls were not possible in this sandbox.
+- **Deployment hardening:** added a restrictive CSP (plus existing nosniff/frame/referrer/
+  permissions headers) to the nginx SPA and asset responses; the API already sends HSTS/CSP in
+  production. The stale `1.0.0-phase1` version string was corrected.
+- **Repository hygiene:** 263 tracked files, 3.8 MB total, no tracked `.env`, credential patterns,
+  databases or personal images; ignored build/runtime artifacts. Fresh-database migrations and seed
+  counts were re-verified.
+- **Not executed here:** Docker/Compose, PostgreSQL 16, a live CatVTON GPU worker and physical mobile
+  hardware. The deployment guide marks these as release-environment checks rather than claiming they
+  ran. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md) and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### Phase 9 verification (administration, security & platform management)
 
@@ -439,11 +537,19 @@ Verified against a live API on 2026-10-30:
 
 ## Documentation
 
-- [Installation guide](docs/INSTALLATION.md) — clean machine to running instance, Docker, troubleshooting.
+- [Audit & production-readiness report](docs/AUDIT.md) — the 10-point Phase 10 audit, findings and release verdict.
+- [Installation guide](docs/INSTALLATION.md) — clean machine to running instance, PostgreSQL/SQLite, Docker, E2E setup, troubleshooting.
+- [Configuration & environment](docs/CONFIGURATION.md) — every backend, frontend, worker and test variable, defaults and production requirements.
+- [Deployment](docs/DEPLOYMENT.md) — topology, TLS/proxy, migrations, backups, monitoring, scaling, rollback and the production checklist.
+- [Vercel + separate backend](docs/VERCEL.md) — the phone-accessible deployment path, required variables and what must be connected.
+- [Mobile guide](docs/MOBILE.md) — Android preview, touch/layout rules, low-memory behaviour and a test checklist.
+- [Limitations](docs/LIMITATIONS.md) — product boundaries and environment-specific gaps, stated explicitly.
+- [API reference](docs/API.md) — authentication, errors, pagination and all 186 operations.
 - [Development guide](docs/DEVELOPMENT.md) — conventions, commands, testing, adding endpoints and pages.
 - [Architecture](docs/ARCHITECTURE.md) — layers, data model, auth, AI routing, media pipeline, deployment.
 - [Administration & security](docs/ADMINISTRATION.md) — accounts, reports, disputes, taxonomy/templates, AI spending controls, privacy workflows and the security test matrix.
 - [Printing & production](docs/PRINTING.md) — print packages, DPI/colour rules, PDF/ZIP export, the ten-state workflow, reviews, and the honest printer-integration status.
+- [Virtual try-on](docs/TRY_ON.md) — CatVTON worker, licence, consent and GPU requirements.
 
 ---
 
@@ -458,14 +564,17 @@ docker compose --profile full up --build
 - `api` (uvicorn) waits for PostgreSQL, applies migrations, seeds the catalogue once, then serves.
 - Uploads persist in the `media` volume; PostgreSQL data in `pgdata`.
 
-For production: terminate TLS in front of nginx, set `COOKIE_SECURE=true`, restrict
-`CORS_ORIGINS`, run `make admin` once, and verify `SECRET_KEY` is not the template value.
+For production: terminate TLS in front of nginx, set `APP_ENV=production` and
+`COOKIE_SECURE=true`, restrict `CORS_ORIGINS`, run `make admin` once, and verify `SECRET_KEY` is not
+the template value. Follow the full [deployment checklist](docs/DEPLOYMENT.md); the compose stack
+could not be executed in the audit sandbox, so run it in your target environment before rollout.
 
 ---
 
 ## Roadmap
 
-Phases 1–8 cover the full vertical slice above. Later work will add cloth simulation, a tested
-printer/RIP integration (only with the real protocol and device available), payment providers and
-richer production scheduling. Those require paid services or additional hardware and will only be
-added with explicit approval.
+Phases 1–10 cover the full vertical slice and a production-readiness audit. Later work will add
+cloth simulation, a tested printer/RIP integration (only with the real protocol and device
+available), payment providers, richer production scheduling and a hardware mobile/GPU test pass.
+Those require paid services or additional hardware and will only be added with explicit approval.
+The honest boundaries are listed in [docs/LIMITATIONS.md](docs/LIMITATIONS.md).

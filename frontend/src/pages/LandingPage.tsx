@@ -1,9 +1,8 @@
-import { useMemo } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { fetchers, qk } from '@/lib/queries'
 import { useAuthStore } from '@/stores/authStore'
-import { AvatarScene } from '@/components/three/AvatarScene'
 import { GarmentArt } from '@/components/garment/GarmentArt'
 import { GarmentCard } from '@/components/garment/GarmentCard'
 import { LinkButton } from '@/components/ui/Button'
@@ -11,6 +10,61 @@ import { Badge, LoadingBlock, Skeleton } from '@/components/ui/Primitives'
 import { formatPrice, titleCase } from '@/lib/format'
 import type { FittingItem } from '@/stores/studioStore'
 import type { Garment, Look } from '@/lib/types'
+
+// The 3D engine is a large chunk; the landing page stays usable while it arrives.
+const AvatarScene = lazy(() =>
+  import('@/components/three/AvatarScene').then((module) => ({ default: module.AvatarScene })),
+)
+
+interface NavigatorWithHints extends Navigator {
+  deviceMemory?: number
+  connection?: { saveData?: boolean; effectiveType?: string }
+}
+
+/** Phones with little memory or a data-saver connection get an opt-in 3D preview. */
+function shouldDefer3D(): boolean {
+  if (typeof navigator === 'undefined') return true
+  const hints = navigator as NavigatorWithHints
+  if (hints.connection?.saveData) return true
+  if (hints.connection?.effectiveType && ['slow-2g', '2g'].includes(hints.connection.effectiveType)) {
+    return true
+  }
+  return typeof hints.deviceMemory === 'number' && hints.deviceMemory <= 4
+}
+
+function AvatarPreviewFallback({ onLoad }: { onLoad?: () => void }) {
+  return (
+    <div
+      className="flex aspect-[4/5] w-full items-center justify-center border border-line bg-[#efe9de] px-6"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="text-center">
+        <div
+          aria-hidden="true"
+          className="mx-auto h-32 w-20 rounded-t-[3rem] border border-ink/15 bg-gradient-to-b from-ink/10 to-ink/5"
+        />
+        <p className="mt-5 text-xs uppercase tracking-[0.16em] text-ink-muted">
+          {onLoad ? '3D preview paused' : 'Loading 3D preview'}
+        </p>
+        <p className="mt-1 text-[0.6875rem] leading-relaxed text-ink-muted">
+          {onLoad
+            ? 'This phone reports limited memory or a data-saver connection. Load it only when you want the interactive view.'
+            : '2D design and print tools work even if this device skips 3D.'}
+        </p>
+        {onLoad && (
+          <button
+            type="button"
+            onClick={onLoad}
+            className="mt-4 min-h-11 border border-ink bg-ink px-5 text-sm text-paper"
+          >
+            Load 3D preview
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 const DEMO_PARAMETERS = {
   height_m: 1.72,
@@ -62,6 +116,7 @@ const pillars = [
 
 export function LandingPage() {
   const user = useAuthStore((state) => state.user)
+  const [show3D, setShow3D] = useState(() => !shouldDefer3D())
   const featured = useQuery({
     queryKey: qk.garments({ featured: true, page_size: 8 }),
     queryFn: () => fetchers.garments({ featured: true, page_size: 8 }),
@@ -150,12 +205,18 @@ export function LandingPage() {
 
           <div className="relative">
             <div className="absolute -left-4 top-6 hidden h-28 w-px bg-line lg:block" />
-            <AvatarScene
-              parameters={DEMO_PARAMETERS}
-              itemsOverride={demoItems}
-              className="aspect-[4/5] w-full bg-[#efe9de]"
-              showControls={false}
-            />
+            {show3D ? (
+              <Suspense fallback={<AvatarPreviewFallback />}>
+                <AvatarScene
+                  parameters={DEMO_PARAMETERS}
+                  itemsOverride={demoItems}
+                  className="aspect-[4/5] w-full bg-[#efe9de]"
+                  showControls={false}
+                />
+              </Suspense>
+            ) : (
+              <AvatarPreviewFallback onLoad={() => setShow3D(true)} />
+            )}
             <div className="flex items-center justify-between border border-t-0 border-line bg-paper px-4 py-3">
               <div>
                 <p className="text-[0.5625rem] uppercase tracking-[0.18em] text-ink-muted">Live preview</p>

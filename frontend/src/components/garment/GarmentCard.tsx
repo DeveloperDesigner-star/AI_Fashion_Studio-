@@ -12,7 +12,7 @@ export function GarmentCard({ garment, compact = false }: { garment: Garment; co
   const primaryStyle = garment.styles?.[0]
 
   return (
-    <article className="group relative flex flex-col border border-line bg-paper transition-colors hover:border-ink/50">
+    <article className="group relative flex min-w-0 flex-col border border-line bg-paper transition-colors hover:border-ink/50">
       <Link to={`/garment/${garment.slug}`} className="block focus-visible:outline-offset-4">
         <div className="relative flex aspect-[4/5] items-center justify-center overflow-hidden bg-bone">
           <GarmentArt

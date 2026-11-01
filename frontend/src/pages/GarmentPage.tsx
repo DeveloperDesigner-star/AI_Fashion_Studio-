@@ -275,7 +275,7 @@ export function GarmentPage() {
         <span className="text-ink">{garment.name}</span>
       </nav>
 
-      <div className="grid gap-8 lg:grid-cols-[1.05fr_1fr]">
+      <div className="grid min-w-0 gap-8 lg:grid-cols-[1.05fr_1fr]">
         {/* -------------------------------------------------------- preview */}
         <div className="lg:sticky lg:top-20 lg:self-start">
           <div className="relative border border-line bg-bone/40">

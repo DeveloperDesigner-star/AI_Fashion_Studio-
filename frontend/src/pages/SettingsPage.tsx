@@ -118,7 +118,7 @@ export function SettingsPage() {
       />
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1.4fr_1fr]">
-        <div className="space-y-8">
+        <div className="min-w-0 space-y-8">
           <section className="border border-line bg-paper p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -156,11 +156,11 @@ export function SettingsPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-3 border-t border-line pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
               <p className="text-xs text-ink-muted">
                 {user.onboarded_at ? 'Onboarding completed.' : 'Onboarding not completed yet.'}
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {!user.onboarded_at && (
                   <LinkButton to="/onboarding" size="sm" variant="ghost">
                     Finish onboarding
@@ -259,7 +259,7 @@ export function SettingsPage() {
           </section>
         </div>
 
-        <aside className="space-y-6">
+        <aside className="min-w-0 space-y-6">
           <section className="border border-line bg-paper p-4">
             <p className="label-xs">Storage</p>
             <div className="mt-3">

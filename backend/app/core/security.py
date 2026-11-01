@@ -8,7 +8,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 from pwdlib import PasswordHash
 
 from app.core.config import settings
@@ -70,8 +71,13 @@ def _create_token(subject: str | uuid.UUID, role: str, token_type: TokenType, tt
 
 def decode_token(token: str, expected_type: TokenType) -> dict[str, Any]:
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
-    except JWTError as exc:  # pragma: no cover - direct mapping
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.jwt_algorithm],
+            options={"require": ["exp", "sub"]},
+        )
+    except InvalidTokenError as exc:  # pragma: no cover - direct mapping
         raise TokenError("Invalid or expired token") from exc
     if payload.get("type") != expected_type:
         raise TokenError("Unexpected token type")

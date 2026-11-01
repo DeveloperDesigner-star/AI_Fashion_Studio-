@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 *.pem
 *.key
 
@@ -29,6 +30,7 @@ backend/media/
 pgdata/
 
 # ---- Node / frontend ----
+.vercel/
 node_modules/
 dist/
 dist-ssr/

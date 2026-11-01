@@ -15,8 +15,13 @@ test.describe('public shell', () => {
 
   test('login validates before contacting the API', async ({ page }) => {
     await page.goto('/login')
-    await page.getByRole('button', { name: /sign in/i }).first().click()
-    await expect(page.getByText(/required/i).first()).toBeVisible()
+    let apiCalls = 0
+    page.on('request', (request) => {
+      if (request.url().includes('/api/v1/auth/login')) apiCalls += 1
+    })
+    await page.getByRole('button', { name: 'Enter the studio' }).click()
+    await expect(page.getByText('Enter your email and password to continue.')).toBeVisible()
+    expect(apiCalls).toBe(0)
   })
 })
 

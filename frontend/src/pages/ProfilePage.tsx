@@ -385,7 +385,7 @@ export function ProfilePage() {
         </div>
       </header>
 
-      <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
+      <div className="grid min-w-0 gap-8 lg:grid-cols-[0.85fr_1.15fr]">
         {/* avatar + sizing ------------------------------------------------- */}
         <div className="space-y-6">
           <section className="border border-line bg-paper">

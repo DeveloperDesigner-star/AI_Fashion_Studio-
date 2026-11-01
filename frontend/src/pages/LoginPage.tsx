@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Field'
@@ -20,13 +20,17 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   if (user) {
-    navigate(next ?? '/studio/women', { replace: true })
+    return <Navigate to={next ?? '/studio/women'} replace />
   }
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     setError(null)
     setFieldErrors({})
+    if (!email.trim() || !password) {
+      setError('Enter your email and password to continue.')
+      return
+    }
     setLoading(true)
     try {
       await login(email.trim(), password)

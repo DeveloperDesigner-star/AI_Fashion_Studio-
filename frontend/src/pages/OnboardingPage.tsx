@@ -194,7 +194,7 @@ export function OnboardingPage() {
 
   return (
     <div className="shell py-10">
-      <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="grid min-w-0 gap-10 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-6">
           <div>
             <p className="eyebrow">Onboarding</p>

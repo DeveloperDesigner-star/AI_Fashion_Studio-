@@ -33,8 +33,10 @@ The browser therefore always talks to one origin and no secret ever reaches clie
 
 ### Presentation (frontend)
 
-- **Routing** — React Router 7 with a single `AppShell` layout. `ProtectedRoute` gates
-  authenticated pages and admin screens.
+- **Routing** — React Router 7 with a single `AppShell` layout. Every page is a separate lazy chunk
+  wrapped in `AsyncBoundary` (loading skeleton + retry if a chunk fails), so a phone does not download
+  the 3D engine or admin dashboard to open the landing page. `ProtectedRoute` gates authenticated
+  pages and admin screens.
 - **Server state** — TanStack Query. Query keys are centralised in `qk`; fetchers in
   `fetchers`; mutations invalidate key prefixes. Caching defaults to 5xx-retry with 4xx short-circuit.
 - **Client state** — Zustand: `authStore` (user, in-memory access token, bootstrap), `studioStore`
@@ -263,7 +265,8 @@ garments ──category──▶ product type   (saree, kurta_pajama, formal_sho
 
 1. **Register/login** verifies the password (Argon2id via `pwdlib`) and returns a JWT access token
    (30 min, memory only) plus an httpOnly refresh cookie (14 days, `SameSite=Lax`, `Secure` in
-   production).
+   production). A split Vercel frontend + separate API deployment uses `SameSite=None; Secure`
+   with an exact CORS origin.
 2. **Refresh** rotates the refresh token: the presented token is revoked and linked to its successor,
    so replay of a used token fails.
 3. **Requests** carry `Authorization: Bearer <access>`. No access token is stored in
@@ -274,8 +277,9 @@ garments ──category──▶ product type   (saree, kurta_pajama, formal_sho
    only through an authenticated endpoint with cache headers.
 7. **Rate limits** apply to auth, uploads and general traffic; **audit logs** record admin actions,
    provider changes and account events.
-8. **Headers**: nginx sets `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`; the API
-   restricts CORS to configured origins.
+8. **Headers**: nginx (and Vercel) set `X-Content-Type-Options`, `X-Frame-Options`,
+   `Referrer-Policy`, `Permissions-Policy` and a restrictive `Content-Security-Policy`; the API
+   restricts CORS to configured origins and adds HSTS/CSP in production.
 
 ---
 
@@ -395,7 +399,12 @@ The platform intentionally does not process payments — settlement happens betw
 
 - The API is stateless apart from uploads; scale horizontally behind a load balancer, but move rate
   limiting and quotas to a shared store first.
-- Refresh cookies require a single cookie domain; keep the web and API on the same site.
+- Refresh cookies normally require a single cookie domain. For the prepared Vercel split, the SPA
+  and API are different sites: set `CORS_ORIGINS` to the Vercel origin and
+  `COOKIE_SAMESITE=none` + `COOKIE_SECURE=true`; the API remains the cookie’s host.
+- Vercel hosts only `frontend/dist`. FastAPI, PostgreSQL, migrations and the private uploads volume
+  are deployed separately; `VITE_API_BASE_URL` must be the public absolute `/api/v1` URL and the
+  build guard rejects a relative/localhost value. See `docs/VERCEL.md`.
 - Health endpoint: `GET /api/v1/health` (also used by container healthchecks).
 - Migrations run from the entrypoint before workers start; run them once per release in orchestrated
   environments.

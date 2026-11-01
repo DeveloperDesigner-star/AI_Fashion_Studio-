@@ -12,7 +12,7 @@ from app.api.v1.deps import DbSession
 from app.core.config import settings
 from app.services.ai import registry, spending
 
-APP_VERSION = "1.0.0-phase1"
+APP_VERSION = "1.0.0"
 
 router = APIRouter(tags=["meta"])
 

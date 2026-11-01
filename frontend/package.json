@@ -7,9 +7,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "vercel-build": "node scripts/verify-vercel-env.mjs && npm run build",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --max-warnings 0",
+    "lint": "eslint src e2e --max-warnings 0",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "e2e": "playwright test",

@@ -10,7 +10,7 @@ are separate processes in one repository; both must run for the full experience.
 | Requirement | Version | Notes |
 |---|---|---|
 | Python | 3.11+ | 3.12 recommended |
-| Node.js | 20+ | 22 recommended (`npm ci` uses the committed lockfile) |
+| Node.js | 20.19+ | 22 LTS recommended (`npm ci` uses the committed lockfile) |
 | PostgreSQL | 16 | Optional — SQLite works for local development |
 | Docker + Compose | 24+ | Optional, for the containerised stack |
 | Git | any recent | |
@@ -96,8 +96,8 @@ also executed by the container entrypoint.
 
 `python scripts/init_db.py` creates:
 
-- 25 original garments (womenswear, menswear, unisex) with components, palettes and fabrics;
-- 6 curated looks;
+- **125 original garments** (womenswear, menswear, unisex) with components, palettes and fabrics;
+- **14 curated looks**;
 - optionally two demo studios with `--demo-marketplace` (development only, unverified).
 
 Nothing is copied from a third party; all names and copy are original.
@@ -182,5 +182,37 @@ Production checklist:
 make check        # ruff + eslint + tsc + pytest + vitest + production build
 ```
 
-Expected output: Ruff clean, ESLint clean, TypeScript clean, **91 backend tests**, **16 frontend
-tests**, Vite build success. Then confirm both servers respond as shown in step 6.
+Expected in the Phase 10 release: Ruff clean, ESLint clean, TypeScript clean, **200 backend tests**,
+**180 frontend tests** in 19 files, and a successful Vite build. Then confirm both servers respond as
+shown in step 6.
+
+For browser tests, install Chromium once and run the 24 Playwright tests:
+
+```bash
+cd frontend
+npm run e2e:install
+E2E_PORT=5173 \
+E2E_ADMIN_EMAIL=you@example.com \
+E2E_ADMIN_PASSWORD='your-admin-password' \
+npm run e2e -- --workers=1
+```
+
+The admin test is skipped without the two admin variables. If `npm run e2e:install` cannot reach the
+Playwright CDN, point the runner at a Chromium you already have:
+
+```bash
+E2E_EXECUTABLE_PATH=/path/to/chromium \
+E2E_BROWSER_ARGS='--no-sandbox --disable-dev-shm-usage --use-angle=swiftshader --enable-unsafe-swiftshader' \
+E2E_PORT=5173 npm run e2e -- --workers=1
+```
+
+A headless browser without GPU can still verify layout and 3D logic via SwiftShader, but frame-rate
+numbers are not representative of a phone.
+
+## 10. Mobile preview and production hosting
+
+- The sandbox live preview is the fastest phone-accessible path; see [MOBILE.md](MOBILE.md).
+- For a permanent Vercel frontend plus a separate FastAPI/PostgreSQL backend, see
+  [VERCEL.md](VERCEL.md). The Vercel build intentionally fails unless `VITE_API_BASE_URL` is an
+  absolute HTTPS URL ending in `/api/v1`.
+- Do not assume a Vercel deployment includes the API, database or private upload storage.

@@ -150,7 +150,7 @@ export function StudioPage() {
       )}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[248px_1fr]">
-        <aside className="space-y-6">
+        <aside className="min-w-0 space-y-6">
           <Input
             label="Search"
             placeholder="Saree, sherwani, khussa…"
@@ -321,7 +321,7 @@ export function StudioPage() {
           </div>
         </aside>
 
-        <div>
+        <div className="min-w-0">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs uppercase tracking-[0.14em] text-ink-muted">
               {garments.data ? `${garments.data.total} pieces` : 'Loading catalogue'}
@@ -346,7 +346,7 @@ export function StudioPage() {
           {garments.isLoading && (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="border border-line bg-paper">
+                <div key={index} className="min-w-0 border border-line bg-paper">
                   <Skeleton className="aspect-[4/5] w-full" />
                   <div className="space-y-2 border-t border-line p-4">
                     <Skeleton className="h-5 w-2/3" />

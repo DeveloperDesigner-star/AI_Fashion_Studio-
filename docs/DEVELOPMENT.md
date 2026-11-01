@@ -20,7 +20,7 @@ backend/
     schemas/            Pydantic v2 request/response contracts
     services/           imaging, sizing, avatar parameters, AI registry/providers/tasks/quota/costs,
                         print preparation, export, audit
-  alembic/versions/     migrations (baseline through Phase 6)
+  alembic/versions/     migrations (baseline through Phase 9)
   scripts/              init_db.py, create_admin.py, docker-entrypoint.sh
   tests/                Pytest suite (isolated SQLite + temp media root)
 frontend/
@@ -29,8 +29,9 @@ frontend/
   src/components/…      layout, garment art (SVG), three (R3F scene, textures)
   src/lib/              api client, types, query keys, formatters, preferences
   src/stores/           auth, studio (fitting-room), toasts — Zustand
-  e2e/                  Playwright specs
-docs/                   installation, development, architecture
+  e2e/                  Playwright specs + synthetic portrait fixture
+  scripts/              build-time guards (Vercel environment check)
+docs/                   installation, development, architecture, API, deployment, mobile, audit
 ```
 
 ---
@@ -49,7 +50,7 @@ docs/                   installation, development, architecture
 | Frontend lint | `cd frontend && npm run lint` |
 | Frontend unit tests | `cd frontend && npx vitest run` |
 | Production build | `cd frontend && npm run build` |
-| E2E (needs browsers) | `cd frontend && npm run e2e:install && npm run e2e` |
+| E2E (installs Chromium once) | `cd frontend && npm run e2e:install && E2E_PORT=5173 npm run e2e -- --workers=1` |
 | Everything | `make check` |
 
 `make check` is the pre-commit gate. Do not commit with a red gate.
@@ -144,6 +145,7 @@ skip link. Respect `prefers-reduced-motion` and the explicit "Reduce motion" set
 3. Add navigation only where it genuinely belongs (header, account menu or footer).
 4. Reuse `PageHeader`, `EmptyState`, `ErrorState`, `Skeleton` so loading/error/empty states match.
 5. Add a unit test if the page owns non-trivial logic; otherwise cover the helper it uses.
+6. Register it with a `lazy()` import in `src/App.tsx` so mobile first paint stays small.
 
 ---
 
@@ -161,8 +163,32 @@ dashboard's report review, access/suspension, erasure approval and taxonomy visi
 (`src/pages/admin.test.tsx`). Backend suites `test_admin.py` and `test_admin_phase9.py` cover the
 authorisation matrix, suspensions, moderation, taxonomy, spending controls and privacy workflows.
 
-**E2E** (`frontend/e2e/`): Playwright smoke specs for the public shell and auth form validation. The
-browsers are not committed; `npm run e2e:install` downloads Chromium once.
+**E2E** (`frontend/e2e/`): **24 Playwright tests** across six specs. The suite covers the public
+shell and login validation (`smoke`), API ownership/upload/role/AI-honesty boundaries (`api`),
+catalogue (`catalog`), avatar studio (`avatar`) and the full journeys: a 27-route desktop sweep, the
+same routes at 390 px, registration → onboarding → rigged 3D, profile, layered design → print
+package, business, administration and animated 3D on an emulated Pixel 5 (`journey`).
+
+```bash
+cd frontend
+npm run e2e:install                     # once per machine (downloads Chromium)
+E2E_PORT=5173 \
+E2E_ADMIN_EMAIL=you@example.com \
+E2E_ADMIN_PASSWORD='your-admin-password' \
+npm run e2e -- --workers=1
+```
+
+- `E2E_PORT` targets an already-running Vite server; `E2E_BASE_URL` targets an already-running site.
+- The admin test **skips** when the admin variables are unset.
+- `E2E_EXECUTABLE_PATH` + `E2E_BROWSER_ARGS` let a restricted sandbox use its own Chromium and
+  SwiftShader (`--use-angle=swiftshader --enable-unsafe-swiftshader --no-sandbox`).
+- The portrait fixture is synthetic (600×900 PNG), so no personal photo enters the repository.
+- Run with `--workers=1` against a single SQLite API: parallel tests create accounts and uploads
+  and the shared rate limiter makes higher concurrency flaky.
+
+Lazy routes: `frontend/src/App.tsx` uses `React.lazy` for every page and wraps them in
+`AsyncBoundary` (suspense skeleton + retry on a failed chunk). Add a new page with a lazy import and
+`page(<YourPage />)` rather than a static import, or the initial bundle will grow.
 
 ---
 

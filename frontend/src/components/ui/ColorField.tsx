@@ -27,6 +27,9 @@ interface ColorFieldProps {
 
 export function ColorField({ label, value, onChange, swatches = SWATCHES, disabled, className }: ColorFieldProps) {
   const id = useId()
+  // Catalogue palettes can repeat a colour across primary/secondary/accent; the
+  // swatch list is de-duplicated so React keys stay unique.
+  const uniqueSwatches = Array.from(new Set(swatches.map((swatch) => swatch.toLowerCase())))
   return (
     <div className={cn('space-y-2', className)}>
       <div className="flex items-center justify-between">
@@ -36,7 +39,7 @@ export function ColorField({ label, value, onChange, swatches = SWATCHES, disabl
         <span className="font-mono text-[0.625rem] uppercase text-ink-muted">{value}</span>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {swatches.map((swatch) => (
+        {uniqueSwatches.map((swatch) => (
           <button
             key={swatch}
             type="button"

@@ -781,7 +781,7 @@ export function TryOnPage() {
       </header>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(330px,0.85fr)]">
-        <div className="space-y-4 xl:sticky xl:top-20 xl:self-start">
+        <div className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
           <div className="flex gap-1 border border-line bg-paper p-1" role="tablist" aria-label="Try-on source">
             {(['avatar', 'photo'] as Mode[]).map((value) => (
               <button
@@ -948,7 +948,7 @@ export function TryOnPage() {
           ) : null}
         </div>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <section className="border border-line bg-paper">
             <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
               <p className="label-xs">2 · Garment</p>
