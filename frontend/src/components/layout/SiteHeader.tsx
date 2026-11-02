@@ -6,15 +6,13 @@ import { fetchers, qk } from '@/lib/queries'
 import { cn, initials } from '@/lib/format'
 import { Badge } from '@/components/ui/Primitives'
 
-const primaryNav = [
-  { to: '/studio', label: 'Studio', end: true },
+const primaryNav: { to: string; label: string; end?: boolean }[] = [
+  { to: '/catalogue', label: 'Catalogue' },
   { to: '/studio/women', label: 'Women' },
   { to: '/studio/men', label: 'Men' },
-  { to: '/studio/accessories', label: 'Accessories' },
   { to: '/fitting-room', label: 'Fitting room' },
-  { to: '/try-on', label: 'Try-on' },
-  { to: '/designs', label: 'Designs' },
-  { to: '/marketplace', label: 'Ateliers' },
+  { to: '/designs', label: 'Projects' },
+  { to: '/marketplace', label: 'Print partners' },
 ]
 
 export function SiteHeader() {
@@ -64,7 +62,7 @@ export function SiteHeader() {
               end={item.end}
               className={({ isActive }) =>
                 cn(
-                  'text-[0.6875rem] uppercase tracking-[0.16em] transition-colors hover:text-clay',
+                  'text-[0.8125rem] font-medium transition-colors hover:text-clay',
                   isActive ? 'text-ink' : 'text-ink-muted',
                 )
               }

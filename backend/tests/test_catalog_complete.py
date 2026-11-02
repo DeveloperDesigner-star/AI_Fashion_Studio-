@@ -137,12 +137,15 @@ def test_facets_are_scoped_and_labelled(client: TestClient) -> None:
     assert facets["category_labels"]["shalwar_kameez"] == "Shalwar Kameez"
 
 
-def test_taxonomy_groups_cover_four_departments(client: TestClient) -> None:
+def test_taxonomy_groups_cover_every_department(client: TestClient) -> None:
     taxonomy = client.get("/api/v1/catalog/taxonomy").json()
     groups = {group["id"]: group for group in taxonomy["category_groups"]}
-    assert set(groups) == {"womenswear", "menswear", "footwear", "accessories"}
+    assert set(groups) == {"womenswear", "menswear", "childrenswear", "footwear", "accessories"}
     assert groups["footwear"]["categories"][0]["label"] == "Sneakers"
     assert groups["accessories"]["categories"][0]["count"] >= 1
+    # Childrenswear is a first-class department, not a re-labelled adult category.
+    children = {option["value"] for option in groups["childrenswear"]["categories"]}
+    assert "childrenswear" in children
     assert len(taxonomy["styles"]) == 13
     assert {option["value"] for option in taxonomy["occasions"]} == {
         "wedding",

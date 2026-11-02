@@ -6,20 +6,20 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'outline' | 'danger'
 type Size = 'sm' | 'md' | 'lg'
 
 const base =
-  'inline-flex items-center justify-center gap-2 border font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 whitespace-nowrap'
+  'inline-flex items-center justify-center gap-2 rounded-sm font-semibold transition-[background-color,border-color,box-shadow,color] disabled:cursor-not-allowed disabled:opacity-45 whitespace-nowrap'
 
 const variants: Record<Variant, string> = {
-  primary: 'bg-ink text-paper border-ink hover:bg-ink-soft',
-  secondary: 'bg-bone text-ink border-line hover:bg-sand',
-  ghost: 'bg-transparent text-ink border-transparent hover:bg-bone',
-  outline: 'bg-transparent text-ink border-ink hover:bg-ink hover:text-paper',
-  danger: 'bg-danger text-paper border-danger hover:opacity-90',
+  primary: 'bg-ink text-paper ring-1 ring-inset ring-ink hover:bg-ink-soft',
+  secondary: 'bg-paper text-ink ring-1 ring-inset ring-line hover:bg-bone hover:ring-line-strong',
+  ghost: 'bg-transparent text-ink-soft hover:bg-bone hover:text-ink',
+  outline: 'bg-transparent text-ink ring-1 ring-inset ring-line-strong hover:bg-ink hover:text-paper hover:ring-ink',
+  danger: 'bg-danger text-white ring-1 ring-inset ring-danger hover:opacity-90',
 }
 
 const sizes: Record<Size, string> = {
-  sm: 'h-8 px-3 text-[0.75rem] tracking-[0.06em] uppercase',
-  md: 'h-11 px-5 text-[0.8125rem] tracking-[0.08em] uppercase',
-  lg: 'h-13 px-7 text-[0.875rem] tracking-[0.1em] uppercase',
+  sm: 'h-9 px-3.5 text-[0.8125rem]',
+  md: 'h-10 px-4 text-sm',
+  lg: 'h-12 px-6 text-[0.9375rem]',
 }
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
