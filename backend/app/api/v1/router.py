@@ -9,6 +9,8 @@ from app.api.v1.endpoints import (
     avatars,
     catalog,
     designs,
+    inspiration,
+    integrations,
     marketplace,
     media,
     meta,
@@ -26,6 +28,8 @@ api_router.include_router(auth.router)
 api_router.include_router(profile.router)
 api_router.include_router(avatars.router)
 api_router.include_router(catalog.router)
+api_router.include_router(inspiration.router)
+api_router.include_router(integrations.router)
 api_router.include_router(designs.router)
 api_router.include_router(outfits.router)
 api_router.include_router(try_on.router)
