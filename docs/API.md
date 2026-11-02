@@ -128,6 +128,12 @@ is liveness only and stays `200` with `{"status":"ok"}`.
 | `POST` | `/api/v1/auth/change-password` | Change Password |
 | `DELETE` | `/api/v1/auth/account` | Delete Account |
 
+Registration is immediate. This backend uses its own password hashing and JWT/refresh tokens; it does
+**not** use Supabase Auth, SMTP, SendGrid, Resend, Mailgun or any other email provider. There is no
+email-confirmation step, confirmation token, resend/confirm endpoint or redirect URL.
+`users.is_verified` starts as `false`, but it is informational and does not block login. The only
+generated tokens are the short-lived access JWT and the rotating refresh token.
+
 ### Profile, measurements and onboarding
 
 | Method | Path | Operation |

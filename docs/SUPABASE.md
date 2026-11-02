@@ -121,6 +121,12 @@ Verify:
 If startup fails, check Vercel's function logs. Missing
 `SUPABASE_SECRET_KEY` with `MEDIA_STORAGE=supabase` is deliberately fatal.
 
+Supabase **Auth is not used**. The backend owns registration and passwords, and Supabase is used
+only for PostgreSQL and private Storage. Supabase Auth's “Confirm email”, SMTP settings and redirect
+URL allow-list therefore have no effect on `/api/v1/auth/register`; registration does not send email
+and does not wait for confirmation. If signup fails, check the database schema and the API error,
+not the Supabase Auth email settings.
+
 If health is `200` but every DB-backed route returns `500` (catalogue, meta/config, login or
 registration), the project is connected but **not migrated**. The health check now reports
 `database.error: "schema_not_migrated"`, `schema_ok: false` and the `missing_tables` list. Run the

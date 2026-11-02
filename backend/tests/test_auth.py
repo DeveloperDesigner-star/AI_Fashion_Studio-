@@ -283,3 +283,28 @@ def test_duplicate_email_is_case_insensitive(client: TestClient) -> None:
     )
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "email_taken"
+
+
+def test_registration_has_no_email_confirmation_gate(client: TestClient) -> None:
+    payload = _register(client, email="no-email-confirmation@example.com")
+    assert payload["user"]["is_verified"] is False
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "no-email-confirmation@example.com", "password": "StudioPass123"},
+    )
+    assert login.status_code == 200
+    assert login.json()["access_token"]
+
+    me = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+    assert me.status_code == 200
+    assert me.json()["is_verified"] is False
+
+
+def test_public_config_reports_no_email_delivery(client: TestClient) -> None:
+    response = client.get("/api/v1/meta/config")
+    assert response.status_code == 200
+    assert response.json()["features"]["email_delivery"] is False

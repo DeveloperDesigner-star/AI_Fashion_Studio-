@@ -3,6 +3,8 @@
  * request would 404, so fail the build unless the API origin is explicit.
  */
 const apiBase = process.env.VITE_API_BASE_URL?.trim()
+const project = process.env.VERCEL_PROJECT_ID ?? 'not running on Vercel'
+const environment = process.env.VERCEL_ENV ?? 'local'
 const problems = []
 
 if (!apiBase) {
@@ -23,9 +25,14 @@ if (apiBase && /localhost|127\.0\.0\.1/.test(apiBase)) {
 if (problems.length) {
   console.error('\nVercel environment is incomplete:\n')
   for (const problem of problems) console.error(`  - ${problem}`)
-  console.error('\nThe frontend does not deploy the Python API. Deploy the backend separately first,')
-  console.error('then set VITE_API_BASE_URL to its public /api/v1 URL.\n')
+  console.error(`\nVercel project: ${project}`)
+  console.error(`Vercel environment: ${environment}`)
+  console.error(`Build working directory: ${process.cwd()}`)
+  console.error('\nEnvironment variables are scoped to one Vercel project and one environment.')
+  console.error('Set VITE_API_BASE_URL for Production, Preview and Development on the project')
+  console.error('that actually serves the frontend, then redeploy that project. The frontend does')
+  console.error('not deploy the Python API; deploy the backend separately first.\n')
   process.exit(1)
 }
 
-console.log(`Vercel API base: ${apiBase}`)
+console.log(`Vercel API base: ${apiBase} (project=${project}, environment=${environment})`)
