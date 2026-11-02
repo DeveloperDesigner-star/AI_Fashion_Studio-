@@ -8,7 +8,12 @@
  * - A single refresh attempt is shared across concurrent 401s.
  */
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api/v1'
+const configuredBaseUrl = (
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || '/api/v1'
+)
+// A trailing slash would produce ``/api/v1//auth/register``, which can fail
+// preflight or redirect differently on the deployed host.
+const BASE_URL = configuredBaseUrl.replace(/\/+$/, '') || '/api/v1'
 
 let accessToken: string | null = null
 
@@ -30,10 +35,17 @@ export class ApiError extends Error {
   code: string
   fields: ApiFieldError[]
   retryAfter?: number
+  requestId?: string
 
   constructor(
     message: string,
-    options: { status: number; code?: string; fields?: ApiFieldError[]; retryAfter?: number },
+    options: {
+      status: number
+      code?: string
+      fields?: ApiFieldError[]
+      retryAfter?: number
+      requestId?: string
+    },
   ) {
     super(message)
     this.name = 'ApiError'
@@ -41,7 +53,22 @@ export class ApiError extends Error {
     this.code = options.code ?? 'error'
     this.fields = options.fields ?? []
     this.retryAfter = options.retryAfter
+    this.requestId = options.requestId
   }
+}
+
+const STATUS_MESSAGES: Record<number, string> = {
+  400: 'Some details need to be corrected.',
+  401: 'Please sign in to continue.',
+  403: 'You do not have permission to do that.',
+  404: 'That page or record could not be found.',
+  409: 'That change conflicts with existing data.',
+  422: 'Some fields need your attention.',
+  429: 'Too many requests. Please wait a moment and try again.',
+  500: 'The studio server hit a problem. Please try again.',
+  502: 'The studio server is temporarily unavailable. Please try again.',
+  503: 'The studio server is temporarily unavailable. Please try again.',
+  504: 'The studio server took too long to respond. Please try again.',
 }
 
 const NETWORK_MESSAGE =
@@ -58,7 +85,10 @@ interface RequestOptions {
 
 async function parseError(response: Response): Promise<ApiError> {
   let code = 'error'
-  let message = response.statusText || 'Request failed'
+  let message =
+    STATUS_MESSAGES[response.status] ||
+    response.statusText ||
+    `Request failed (${response.status})`
   let fields: ApiFieldError[] = []
   try {
     const payload = await response.json()
@@ -74,7 +104,14 @@ async function parseError(response: Response): Promise<ApiError> {
     /* non-JSON error body */
   }
   const retryAfter = Number(response.headers.get('retry-after')) || undefined
-  return new ApiError(message, { status: response.status, code, fields, retryAfter })
+  const requestId = response.headers.get('x-request-id') || undefined
+  return new ApiError(message, {
+    status: response.status,
+    code,
+    fields,
+    retryAfter,
+    requestId,
+  })
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -91,7 +128,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   let response: Response
   try {
-    response = await fetch(`${BASE_URL}${path}`, {
+    response = await fetch(`${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`, {
       method: options.method ?? 'GET',
       headers,
       body,

@@ -42,6 +42,10 @@ def health(response: Response, db: DbSession) -> dict[str, Any]:
             "driver": backend,
             "error": check.category,
             "sqlstate": check.sqlstate,
+            "schema_ok": check.schema_ok,
+            "missing_tables": list(check.missing_tables),
+            "migration_current": check.migration_current,
+            "migration_head": check.migration_head,
         },
         "media_storage": settings.media_storage,
         "media_bucket": (

@@ -123,21 +123,23 @@ def register(
         marketing_opt_in=payload.marketing_opt_in,
         terms_accepted_at=datetime.now(UTC),
     )
-    db.add(user)
-    db.flush()
-    db.add(Profile(user_id=user.id, display_name=payload.full_name.split(" ")[0]))
-    db.add(
-        Notification(
-            user_id=user.id,
-            kind="system",
-            title="Welcome to AI Fashion Studio",
-            body="Complete your measurements to unlock personalised sizing and your 3D avatar.",
-            link="/onboarding",
-        )
-    )
     try:
+        db.add(user)
+        db.flush()
+        db.add(Profile(user_id=user.id, display_name=payload.full_name.split(" ")[0]))
+        db.add(
+            Notification(
+                user_id=user.id,
+                kind="system",
+                title="Welcome to AI Fashion Studio",
+                body="Complete your measurements to unlock personalised sizing and your 3D avatar.",
+                link="/onboarding",
+            )
+        )
         db.flush()
     except IntegrityError:
+        # Covers both the race on the unique email index and a duplicate
+        # profile/notification insert. The API must return 409, never 500.
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

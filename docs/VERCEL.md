@@ -75,6 +75,11 @@ If you use a custom frontend domain, update the backend's `CORS_ORIGINS` to that
 exact origin (comma-separated, no wildcard, no trailing slash) and redeploy the
 backend.
 
+`VITE_API_BASE_URL` is baked into the bundle at build time. Changing it in Vercel
+does nothing until the frontend is redeployed. A trailing slash is normalised by
+the client, but the build guard still requires an absolute URL ending in
+`/api/v1`.
+
 ---
 
 ## 3. Verify from the public URLs

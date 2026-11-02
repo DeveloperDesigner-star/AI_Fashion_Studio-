@@ -212,7 +212,9 @@ All backend secrets live in `.env` (never committed). Key variables:
 | `TRYON_REQUEST_TIMEOUT`, `TRYON_RATE_LIMIT_PER_MINUTE` | Try-on timeout and per-IP generation limit |
 | `RATE_LIMIT_*` | Per-IP request limits |
 
-Frontend build-time values live in `frontend/.env.example` (`VITE_API_BASE_URL=/api/v1`).
+Frontend build-time values live in `frontend/.env.example`. Local development uses the relative
+`VITE_API_BASE_URL=/api/v1`; every Vercel build must set
+`VITE_API_BASE_URL=https://<backend>/api/v1` (absolute, HTTPS, no trailing slash).
 
 ---
 
