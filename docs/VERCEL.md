@@ -75,6 +75,29 @@ If you use a custom frontend domain, update the backend's `CORS_ORIGINS` to that
 exact origin (comma-separated, no wildcard, no trailing slash) and redeploy the
 backend.
 
+`VITE_API_BASE_URL` is baked into the bundle at build time. Changing it in Vercel
+does nothing until the frontend is redeployed. A trailing slash is normalised by
+the client, but the build guard still requires an absolute URL ending in
+`/api/v1`.
+
+### “VITE_API_BASE_URL is missing” even though it is configured
+
+Vercel environment variables are scoped by **project** and by **environment**. A
+variable set only on the production frontend project does not exist in:
+
+- another duplicate project building the same repository;
+- the repository-root project that uses the root `vercel.json` and runs
+  `cd frontend && npm run vercel-build`;
+- Preview or Development deployments when the variable is marked Production only.
+
+The build guard prints the Vercel project id, environment and working directory on
+failure. Compare those with the project that owns the public frontend domain, then
+set `VITE_API_BASE_URL=https://<backend>/api/v1` for Production, Preview and
+Development in that project and redeploy. Disconnect unused duplicate projects
+rather than adding a second source of truth. The guard intentionally fails the
+build rather than shipping a frontend that calls a relative `/api/v1` on the
+frontend domain.
+
 ---
 
 ## 3. Verify from the public URLs

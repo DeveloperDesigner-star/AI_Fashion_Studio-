@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from fastapi.testclient import TestClient
 
 from tests.conftest import _register
@@ -197,3 +199,112 @@ def test_cookie_logout_rejects_an_untrusted_origin(
     )
     assert allowed.status_code == 204
     assert client.cookies.get("afs_refresh") in (None, "")
+
+
+def test_registration_invalid_email_returns_422(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "not-an-email",
+            "password": "StudioPass123",
+            "full_name": "Invalid Email",
+            "accept_terms": True,
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "validation_error"
+    assert any(field["field"] == "email" for field in response.json()["detail"]["fields"])
+
+
+def test_login_success_returns_tokens(client: TestClient) -> None:
+    _register(client, email="welcome@example.com")
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "welcome@example.com", "password": "StudioPass123"},
+    )
+    assert response.status_code == 200
+    assert response.json()["access_token"]
+    assert response.json()["user"]["email"] == "welcome@example.com"
+
+
+def test_registration_database_failure_is_a_clear_503(client: TestClient, db_session) -> None:
+    from sqlalchemy import text
+
+    # Simulate an unmigrated Supabase project: users exist but notifications do not.
+    db_session.execute(text("DROP TABLE notifications"))
+    db_session.commit()
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "unmigrated@example.com",
+            "password": "StudioPass123",
+            "full_name": "Unmigrated Database",
+            "accept_terms": True,
+        },
+    )
+    assert response.status_code == 503
+    body = response.json()
+    assert body["detail"]["code"] == "database_unavailable"
+    assert "not ready" in body["detail"]["message"].lower()
+    assert "notification" not in response.text.lower()
+
+
+def test_registration_creates_user_profile_and_welcome_notification(
+    client: TestClient, db_session
+) -> None:
+    from sqlalchemy import select
+
+    from app.models.notification import Notification
+    from app.models.profile import Profile
+    from app.models.user import User
+
+    payload = _register(client, email="records@example.com")
+    user = db_session.get(User, uuid.UUID(payload["user"]["id"]))
+    assert user is not None
+    assert user.email == "records@example.com"
+    assert db_session.scalar(select(Profile).where(Profile.user_id == user.id)) is not None
+    notice = db_session.scalar(
+        select(Notification).where(Notification.user_id == user.id)
+    )
+    assert notice is not None
+    assert notice.kind == "system"
+
+
+def test_duplicate_email_is_case_insensitive(client: TestClient) -> None:
+    _register(client, email="case@example.com")
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "CASE@EXAMPLE.COM",
+            "password": "StudioPass123",
+            "full_name": "Case Clash",
+            "accept_terms": True,
+        },
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "email_taken"
+
+
+def test_registration_has_no_email_confirmation_gate(client: TestClient) -> None:
+    payload = _register(client, email="no-email-confirmation@example.com")
+    assert payload["user"]["is_verified"] is False
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "no-email-confirmation@example.com", "password": "StudioPass123"},
+    )
+    assert login.status_code == 200
+    assert login.json()["access_token"]
+
+    me = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+    assert me.status_code == 200
+    assert me.json()["is_verified"] is False
+
+
+def test_public_config_reports_no_email_delivery(client: TestClient) -> None:
+    response = client.get("/api/v1/meta/config")
+    assert response.status_code == 200
+    assert response.json()["features"]["email_delivery"] is False

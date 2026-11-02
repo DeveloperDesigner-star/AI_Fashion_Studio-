@@ -80,15 +80,25 @@ The table is generated from the running OpenAPI document and lists all **186** o
 | `GET` | `/` | Root |
 | `GET` | `/health` | Health |
 
-`GET /api/v1/health` returns `200` when the database answers `SELECT 1` and `503` when it does not.
-The body never contains driver messages or credentials:
+`GET /api/v1/health` returns `200` only when the database answers `SELECT 1`, every ORM table
+exists, and (in production/staging) the Alembic revision matches the migration head. It returns
+`503` otherwise. The body never contains driver messages or credentials:
 
 ```json
 {
   "status": "ok",
   "version": "1.0.0",
   "environment": "production",
-  "database": {"ok": true, "driver": "postgresql", "error": null, "sqlstate": null},
+  "database": {
+    "ok": true,
+    "driver": "postgresql+psycopg2",
+    "error": null,
+    "sqlstate": null,
+    "schema_ok": true,
+    "missing_tables": [],
+    "migration_current": "q1b2c3d4e5f6",
+    "migration_head": "q1b2c3d4e5f6"
+  },
   "media_storage": "supabase",
   "media_bucket": "media",
   "storage_configured": true,
@@ -99,8 +109,10 @@ The body never contains driver messages or credentials:
 On failure `status` is `"unavailable"` and `database.error` is one of `authentication_failed`,
 `configuration_error`, `schema_not_migrated`, `database_unavailable`, `dns_failure`,
 `connection_timeout`, `ssl_failure`, `connection_refused` or `database_error`. `database.sqlstate`
-contains the PostgreSQL SQLSTATE when the driver supplied one. `/health` is liveness only and stays
-`200` with `{"status":"ok"}`.
+contains the PostgreSQL SQLSTATE when the driver supplied one. `schema_not_migrated` means the
+Supabase project is reachable but the application tables or latest Alembic revision are missing;
+`missing_tables` lists them and `migration_current`/`migration_head` show the revision drift. `/health`
+is liveness only and stays `200` with `{"status":"ok"}`.
 
 ### Authentication and account
 
@@ -115,6 +127,12 @@ contains the PostgreSQL SQLSTATE when the driver supplied one. `/health` is live
 | `PATCH` | `/api/v1/auth/me` | Update Me |
 | `POST` | `/api/v1/auth/change-password` | Change Password |
 | `DELETE` | `/api/v1/auth/account` | Delete Account |
+
+Registration is immediate. This backend uses its own password hashing and JWT/refresh tokens; it does
+**not** use Supabase Auth, SMTP, SendGrid, Resend, Mailgun or any other email provider. There is no
+email-confirmation step, confirmation token, resend/confirm endpoint or redirect URL.
+`users.is_verified` starts as `false`, but it is informational and does not block login. The only
+generated tokens are the short-lived access JWT and the rotating refresh token.
 
 ### Profile, measurements and onboarding
 

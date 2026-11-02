@@ -13,17 +13,30 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.errors import UnhandledErrorMiddleware
 from app.db.session import CommitSessionMiddleware
+from app.services.database_health import classify_database_error
 
 logging.basicConfig(
     level=logging.DEBUG if settings.debug and not settings.is_production else logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s :: %(message)s",
 )
 logger = logging.getLogger("ai_fashion_studio")
+
+
+def _sqlstate(exc: BaseException) -> str | None:
+    original = getattr(exc, "orig", exc)
+    for attribute in ("pgcode", "sqlstate"):
+        value = getattr(original, attribute, None)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
 
 DOCS_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
 DOCS_CSP = (
@@ -97,6 +110,9 @@ def create_app() -> FastAPI:
     )
 
     application.add_middleware(CommitSessionMiddleware)
+    # Must be inside CORS so 500 responses still carry CORS headers for the
+    # frontend to read the JSON error instead of reporting a network failure.
+    application.add_middleware(UnhandledErrorMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -147,6 +163,32 @@ def create_app() -> FastAPI:
                     "fields": fields,
                 }
             },
+        )
+
+    @application.exception_handler(SQLAlchemyError)
+    async def database_error_handler(_request: Request, exc: SQLAlchemyError) -> JSONResponse:
+        category = classify_database_error(exc)
+        logger.warning("Database error: category=%s sqlstate=%s", category, _sqlstate(exc))
+        unavailable = category in {
+            "schema_not_migrated",
+            "database_unavailable",
+            "connection_timeout",
+            "dns_failure",
+            "ssl_failure",
+            "connection_refused",
+            "authentication_failed",
+            "configuration_error",
+        }
+        message = (
+            "The studio database is not ready yet. Please try again shortly."
+            if category == "schema_not_migrated"
+            else "The studio database is temporarily unavailable. Please try again."
+        )
+        if not unavailable:
+            message = "Something went wrong on our side. Please try again."
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE if unavailable else 500,
+            content={"detail": {"code": "database_unavailable", "message": message}},
         )
 
     @application.exception_handler(StarletteHTTPException)

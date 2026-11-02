@@ -111,14 +111,27 @@ does not read it for database or Storage access.
 
 Verify:
 
-- `https://<backend>/api/v1/health` returns **200**, `"status":"ok"`, `"database":{"ok":true}` and
-  `"media_storage":"supabase"`. A database failure returns **503** with a safe category such as
+- `https://<backend>/api/v1/health` returns **200**, `"status":"ok"`, `"database":{"ok":true}`,
+  `"schema_ok":true`, `"missing_tables":[]` and `"media_storage":"supabase"`. A database failure
+  returns **503** with a safe category such as
   `authentication_failed`, `dns_failure`, `connection_timeout`, `ssl_failure` or
   `connection_refused`; raw driver messages and credentials are never returned.
 - `https://<backend>/docs` returns **200** unless `API_DOCS_ENABLED=false`.
 
 If startup fails, check Vercel's function logs. Missing
 `SUPABASE_SECRET_KEY` with `MEDIA_STORAGE=supabase` is deliberately fatal.
+
+Supabase **Auth is not used**. The backend owns registration and passwords, and Supabase is used
+only for PostgreSQL and private Storage. Supabase Auth's “Confirm email”, SMTP settings and redirect
+URL allow-list therefore have no effect on `/api/v1/auth/register`; registration does not send email
+and does not wait for confirmation. If signup fails, check the database schema and the API error,
+not the Supabase Auth email settings.
+
+If health is `200` but every DB-backed route returns `500` (catalogue, meta/config, login or
+registration), the project is connected but **not migrated**. The health check now reports
+`database.error: "schema_not_migrated"`, `schema_ok: false` and the `missing_tables` list. Run the
+migration workflow below. Do not change `CORS_ORIGINS`, the database password or the health check to
+work around this state.
 
 ## 2. Run migrations and seed from your phone
 
@@ -180,8 +193,10 @@ Supabase setting.
 
 Run these from the deployed URLs, not localhost:
 
-1. `GET https://<backend>/api/v1/health` → 200. If it is 503, read `database.error` and use the
-   category to fix the URL/password/network before changing application code.
+1. `GET https://<backend>/api/v1/health` → 200 with `schema_ok: true`, an empty `missing_tables`
+   list and `migration_current == migration_head`. If it is 503, read `database.error` and use the
+   category to fix the URL/password/network/schema before changing application code. A
+   `schema_not_migrated` result means run the migration workflow; it is not a CORS problem.
 2. Register a new account on the frontend; sign in again in a fresh tab to test
    the `HttpOnly; Secure; SameSite=None` refresh cookie.
 3. Upload a portrait. It should write to the private `media` bucket and come

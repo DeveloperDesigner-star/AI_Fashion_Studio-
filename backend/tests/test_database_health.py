@@ -6,7 +6,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
 from app.api.v1.endpoints import meta
-from app.services.database_health import DatabaseCheck, check_database, classify_database_error
+from app.services.database_health import (
+    REQUIRED_TABLES,
+    DatabaseCheck,
+    check_database,
+    classify_database_error,
+)
 
 
 def _operational_error(message: str, sqlstate: str | None = None) -> OperationalError:
@@ -88,6 +93,10 @@ def test_health_returns_503_and_no_raw_error(client: TestClient, monkeypatch) ->
         "driver": "sqlite",
         "error": "authentication_failed",
         "sqlstate": "28P01",
+        "schema_ok": True,
+        "missing_tables": [],
+        "migration_current": None,
+        "migration_head": None,
     }
     assert "password" not in response.text.lower()
     assert "OperationalError" not in response.text
@@ -97,3 +106,54 @@ def test_health_reports_storage_configuration(client: TestClient) -> None:
     response = client.get("/api/v1/health")
     assert response.status_code == 200
     assert response.json()["storage_configured"] is True
+
+
+def test_check_database_verifies_all_orm_tables(db_session) -> None:
+    result = check_database(db_session)
+    assert result.ok is True
+    assert result.schema_ok is True
+    assert result.missing_tables == ()
+    assert "notifications" in REQUIRED_TABLES
+
+
+def test_missing_table_is_schema_not_migrated(db_session) -> None:
+    from sqlalchemy import text
+
+    db_session.execute(text("DROP TABLE notifications"))
+    db_session.commit()
+    result = check_database(db_session)
+    assert result.ok is False
+    assert result.category == "schema_not_migrated"
+    assert result.schema_ok is False
+    assert "notifications" in result.missing_tables
+
+
+def test_health_returns_503_when_application_tables_are_missing(client: TestClient, db_session) -> None:
+    from sqlalchemy import text
+
+    db_session.execute(text("DROP TABLE notifications"))
+    db_session.commit()
+    response = client.get("/api/v1/health")
+    assert response.status_code == 503
+    body = response.json()
+    assert body["database"]["error"] == "schema_not_migrated"
+    assert body["database"]["schema_ok"] is False
+    assert "notifications" in body["database"]["missing_tables"]
+
+
+def test_migration_head_is_discoverable() -> None:
+    from app.services.database_health import _migration_head
+
+    assert _migration_head()
+
+
+def test_production_requires_the_migration_revision(db_session, monkeypatch) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "app_env", "production")
+    result = check_database(db_session)
+    assert result.ok is False
+    assert result.category == "schema_not_migrated"
+    assert result.schema_ok is False
+    assert result.missing_tables == ()
+    assert result.migration_head

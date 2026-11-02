@@ -4,16 +4,31 @@ The public health endpoint must never return a raw driver exception: those can
 contain hostnames, usernames, or fragments of a connection string. This module
 maps SQLAlchemy/psycopg2 failures to a small, stable category that is safe to
 show in a response and in a log line.
+
+``SELECT 1`` is not enough to call a database "healthy". A Supabase project can
+accept connections while every application table is still missing (for example
+when the Alembic migration job has never run). The check therefore also verifies
+that the tables registered in the ORM exist, and in production compares the
+Alembic revision with the migration head.
 """
 
 from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.models import Base
+
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+REQUIRED_TABLES = frozenset(Base.metadata.tables)
+MIGRATION_REQUIRED_ENVIRONMENTS = frozenset({"production", "staging"})
 
 
 @dataclass(frozen=True)
@@ -21,6 +36,10 @@ class DatabaseCheck:
     ok: bool
     category: str | None = None
     sqlstate: str | None = None
+    schema_ok: bool = True
+    missing_tables: tuple[str, ...] = ()
+    migration_current: str | None = None
+    migration_head: str | None = None
 
 
 def _original(exc: BaseException) -> BaseException:
@@ -45,7 +64,7 @@ def classify_database_error(exc: BaseException) -> str:
         return "authentication_failed"
     if state in {"3D000", "42501"}:
         return "configuration_error"
-    if state in {"42P01", "42703"}:
+    if state in {"42P01", "42703", "42P10"}:
         return "schema_not_migrated"
     if state in {"53300", "57P03", "08006", "08003", "08001"}:
         return "database_unavailable"
@@ -106,6 +125,18 @@ def classify_database_error(exc: BaseException) -> str:
     if any(
         marker in message
         for marker in (
+            "no such table",
+            "no such column",
+            "undefined table",
+            "undefined column",
+            "relation \"",
+            "does not exist",
+        )
+    ):
+        return "schema_not_migrated"
+    if any(
+        marker in message
+        for marker in (
             "invalid dsn",
             "invalid connection option",
             "missing dsn",
@@ -118,7 +149,28 @@ def classify_database_error(exc: BaseException) -> str:
     return "database_error"
 
 
+@lru_cache(maxsize=1)
+def _migration_head() -> str | None:
+    """Read the expected Alembic revision without touching the database."""
+
+    try:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+
+        config = Config(str(BACKEND_DIR / "alembic.ini"))
+        config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+        return ScriptDirectory.from_config(config).get_current_head()
+    except Exception:  # pragma: no cover - packaging errors must not break health
+        return None
+
+
+def _tables(session: Session) -> set[str]:
+    return set(inspect(session.connection()).get_table_names())
+
+
 def check_database(session: Session) -> DatabaseCheck:
+    """Check connectivity, application tables and (in production) migrations."""
+
     try:
         session.execute(text("SELECT 1"))
     except SQLAlchemyError as exc:
@@ -129,4 +181,52 @@ def check_database(session: Session) -> DatabaseCheck:
         with contextlib.suppress(Exception):
             session.rollback()
         return DatabaseCheck(False, "database_error", _sqlstate(exc))
-    return DatabaseCheck(True)
+
+    try:
+        tables = _tables(session)
+    except SQLAlchemyError as exc:
+        with contextlib.suppress(Exception):
+            session.rollback()
+        return DatabaseCheck(False, classify_database_error(exc), _sqlstate(exc), schema_ok=False)
+    except Exception:  # pragma: no cover - defensive
+        return DatabaseCheck(False, "database_error", schema_ok=False)
+
+    missing = tuple(sorted(REQUIRED_TABLES - tables))
+    if missing:
+        return DatabaseCheck(
+            False,
+            "schema_not_migrated",
+            schema_ok=False,
+            missing_tables=missing,
+        )
+
+    head = _migration_head()
+    current: str | None = None
+    if settings.app_env in MIGRATION_REQUIRED_ENVIRONMENTS:
+        try:
+            current = session.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
+        except SQLAlchemyError as exc:
+            with contextlib.suppress(Exception):
+                session.rollback()
+            return DatabaseCheck(
+                False,
+                "schema_not_migrated",
+                _sqlstate(exc),
+                schema_ok=False,
+                migration_head=head,
+            )
+        if head is not None and current != head:
+            return DatabaseCheck(
+                False,
+                "schema_not_migrated",
+                schema_ok=False,
+                migration_current=current,
+                migration_head=head,
+            )
+
+    return DatabaseCheck(
+        True,
+        schema_ok=True,
+        migration_current=current,
+        migration_head=head,
+    )
