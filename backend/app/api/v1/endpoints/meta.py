@@ -12,6 +12,8 @@ from app.core.config import settings
 from app.services import storage
 from app.services.ai import registry, spending
 from app.services.database_health import check_database
+from app.services.huggingface import huggingface
+from app.services.inspiration import pixabay
 
 APP_VERSION = "1.0.0"
 logger = logging.getLogger(__name__)
@@ -89,6 +91,10 @@ def public_config(db: DbSession) -> dict[str, Any]:
             "procedural_avatar": True,
             "print_preparation": True,
             "marketplace": True,
+            # Both are read from configuration presence only. Neither asserts a
+            # successful upstream call; that is reported per request.
+            "fashion_inspiration": pixabay.configured(),
+            "huggingface_metadata": huggingface.configured(),
             "email_delivery": False,
             "payments": False,
         },

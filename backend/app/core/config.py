@@ -129,6 +129,24 @@ class Settings(BaseSettings):
     tryon_model_repo: str = "https://github.com/Zheng-Chong/CatVTON"
     tryon_model_name: str = "CatVTON"
 
+    # ---- Fashion inspiration (Pixabay) ----
+    # Server-only. Never surfaced to the browser, never logged, never returned
+    # by an endpoint. An empty value is a supported state: the API reports the
+    # feature as unconfigured and the UI shows an honest notice.
+    pixabay_api_key: str = ""
+    pixabay_timeout_seconds: float = 8.0
+    pixabay_cache_ttl_seconds: int = 86_400
+    pixabay_cache_max_entries: int = 128
+    pixabay_max_per_page: int = 24
+
+    # ---- Hugging Face (model metadata only) ----
+    # Optional. Used to raise rate limits and read gated model metadata. The
+    # application never downloads weights during a request and never proxies
+    # inference: see docs/HUGGINGFACE.md.
+    hf_token: str = ""
+    hf_timeout_seconds: float = 8.0
+    hf_cache_ttl_seconds: int = 3_600
+
     # ---- AI providers ----
     gemini_api_key: str = ""
     gemini_text_model: str = "gemini-2.5-flash"

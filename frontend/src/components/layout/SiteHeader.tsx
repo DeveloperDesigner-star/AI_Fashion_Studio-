@@ -11,6 +11,7 @@ const primaryNav: { to: string; label: string; end?: boolean }[] = [
   { to: '/studio/women', label: 'Women' },
   { to: '/studio/men', label: 'Men' },
   { to: '/fitting-room', label: 'Fitting room' },
+  { to: '/inspiration', label: 'Inspiration' },
   { to: '/designs', label: 'Projects' },
   { to: '/marketplace', label: 'Print partners' },
 ]
