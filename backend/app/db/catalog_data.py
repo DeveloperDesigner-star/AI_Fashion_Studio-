@@ -13,6 +13,7 @@ into rows that ``seed_catalog`` upserts by slug.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 # --------------------------------------------------------------------------- #
@@ -45,6 +46,7 @@ ALL_FABRICS = [
 APPAREL_SIZES = ["XS", "S", "M", "L", "XL", "XXL"]
 WOMENS_SHOE_SIZES = ["36", "37", "38", "39", "40", "41", "42"]
 MENS_SHOE_SIZES = ["39", "40", "41", "42", "43", "44", "45", "46"]
+KIDS_SIZES = ["2Y", "4Y", "6Y", "8Y", "10Y", "12Y"]
 ONE_SIZE = ["one-size"]
 
 
@@ -1139,18 +1141,108 @@ TEMPLATES: list[dict[str, Any]] = [
             ("Noir Frame", "noir", 0, [], ["casual"], False),
         ],
     },
+    {
+        "key": "pique-polo",
+        "name": "Piqué Polo Shirt",
+        "gender": "menswear",
+        "category": "polo",
+        "slot": "top",
+        "silhouette": "shirt",
+        "price": 6900,
+        "fabric": "cotton",
+        "season": "all-season",
+        "fit": "regular",
+        "styles": ["classic", "minimalist", "office"],
+        "occasions": ["everyday", "office", "casual"],
+        "description": "A cotton piqué polo with a ribbed collar, two-button placket and side vents.",
+        "story": "Cut slightly longer through the body so it stays tucked; the collar is knitted rather than woven so it keeps its roll after washing.",
+        "components": [BODY, SLEEVES, NECKLINE, PLACKET, PRINT_PANEL],
+        "variants": [
+            ("Cream Piqué", "ivory", 0, [], ["everyday"], True),
+            ("Forest Piqué", "forest", 0, [], ["casual"], False),
+            ("Noir Piqué", "noir", 0, [], ["office"], False),
+        ],
+    },
+    {
+        "key": "loopback-sweatshirt",
+        "name": "Loopback Sweatshirt",
+        "gender": "unisex",
+        "category": "sweatshirt",
+        "slot": "top",
+        "silhouette": "knit",
+        "price": 8900,
+        "fabric": "cotton",
+        "season": "autumn-winter",
+        "fit": "loose",
+        "styles": ["casual", "streetwear", "minimalist"],
+        "occasions": ["everyday", "casual"],
+        "description": "A loopback cotton crewneck with ribbed collar, cuffs and hem.",
+        "story": "The body is cut square through the waist so a large chest print stays flat instead of riding up over the ribbing.",
+        "components": [BODY, SLEEVES, RIB, NECKLINE, PRINT_PANEL],
+        "variants": [
+            ("Ivory Loopback", "ivory", 0, [], ["everyday"], True),
+            ("Slate Loopback", "slate", 0, [], ["casual"], False),
+        ],
+    },
+    {
+        "key": "fitted-womens-tee",
+        "name": "Fitted Tee",
+        "gender": "womenswear",
+        "category": "tshirt",
+        "slot": "top",
+        "silhouette": "tshirt",
+        "price": 4900,
+        "fabric": "jersey",
+        "season": "all-season",
+        "fit": "slim",
+        "styles": ["minimalist", "casual", "modern"],
+        "occasions": ["everyday", "casual"],
+        "description": "A fine-gauge cotton jersey tee with a shaped waist and a narrow rib neck.",
+        "story": "Drafted with a slight waist suppression and a higher armhole so the shoulder line stays clean under a layer.",
+        "components": [BODY, SLEEVES, NECKLINE, PRINT_PANEL],
+        "variants": [
+            ("Chalk Fitted", "chalk", 0, [], ["everyday"], True),
+            ("Rosewood Fitted", "rosewood", 0, [], ["casual"], False),
+        ],
+    },
+    {
+        "key": "little-crew-tee",
+        "name": "Little Crew Tee",
+        "gender": "unisex",
+        "category": "childrenswear",
+        "slot": "top",
+        "silhouette": "tshirt",
+        "price": 2900,
+        "fabric": "cotton",
+        "season": "all-season",
+        "fit": "regular",
+        "styles": ["casual", "playful"],
+        "occasions": ["everyday", "casual"],
+        "description": "A soft combed-cotton children's tee with a taped neck and a scaled print area.",
+        "story": "Scales the same block as the adult tee down to children's sizing, with a narrower printable area so artwork lands on the chest rather than the armholes.",
+        "components": [BODY, SLEEVES, NECKLINE, PRINT_PANEL],
+        "sizes": "kids",
+        "variants": [
+            ("Chalk Little", "chalk", 0, [], ["everyday"], True),
+            ("Sky Little", "sky", 0, [], ["casual"], False),
+        ],
+    },
 ]
 
 SIZE_SETS = {
     "apparel": APPAREL_SIZES,
     "womens_shoes": WOMENS_SHOE_SIZES,
     "mens_shoes": MENS_SHOE_SIZES,
+    "kids": KIDS_SIZES,
     "one_size": ONE_SIZE,
 }
 
 
 def slugify(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    """ASCII slug that keeps accented product words readable in a URL."""
+    decomposed = unicodedata.normalize("NFKD", value)
+    ascii_only = decomposed.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "-", ascii_only.lower()).strip("-")
 
 
 def build_catalog_garments() -> list[dict[str, Any]]:

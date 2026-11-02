@@ -7,6 +7,8 @@ import { useAuthStore } from '@/stores/authStore'
 import { toast } from '@/stores/toastStore'
 import { useStudioStore } from '@/stores/studioStore'
 import { GarmentArt } from '@/components/garment/GarmentArt'
+import { MockupImage } from '@/components/mockup/MockupImage'
+import { resolveMockup, type MockupView } from '@/lib/mockups'
 import { AvatarScene } from '@/components/three/AvatarScene'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Field'
@@ -66,6 +68,7 @@ export function GarmentPage() {
   const [searchParams] = useSearchParams()
   const requestedDesignId = searchParams.get('design')
   const appliedDesignRef = useRef<string | null>(null)
+  const [activeMockupView, setActiveMockupView] = useState(0)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { isFavorite, toggle, signedIn } = useFavorites()
@@ -124,6 +127,11 @@ export function GarmentPage() {
 
   const avatar = avatarsQuery.data?.find((item) => item.is_primary) ?? avatarsQuery.data?.[0]
   const parameters = avatar?.parameters ?? FALLBACK_AVATAR
+
+  const mockup = garment
+    ? resolveMockup({ category: garment.category, gender: garment.gender })
+    : null
+  const mockupView: MockupView | null = mockup?.views[activeMockupView] ?? mockup?.views[0] ?? null
 
   const fittingItems = useMemo(
     () =>
@@ -289,9 +297,21 @@ export function GarmentPage() {
                 className="aspect-[4/5] w-full"
                 showControls={false}
               />
+            ) : mockupView ? (
+              <MockupImage
+                key={mockupView.key}
+                view={mockupView}
+                alt={`${garment.name} — ${mockupView.label.toLowerCase()} view of the blank`}
+                priority
+                sizes="(min-width: 1024px) 46vw, 92vw"
+                className="aspect-[4/5] w-full"
+              />
             ) : (
-              <div className="flex aspect-[4/5] items-center justify-center">
-                <GarmentArt garment={garment} components={components} className="h-[86%] w-[70%]" />
+              <div className="relative flex aspect-[4/5] flex-col items-center justify-center gap-2 px-6 text-center">
+                <GarmentArt garment={garment} components={components} className="h-[80%] w-[62%]" />
+                <p className="text-[0.6875rem] leading-relaxed text-ink-muted">
+                  Design preview — no photographed blank exists for this category
+                </p>
               </div>
             )}
 
@@ -314,20 +334,47 @@ export function GarmentPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 divide-x divide-line border border-t-0 border-line bg-paper">
+          {mockup && mockup.views.length > 1 && (
+            <div className="mt-2 flex gap-2" role="group" aria-label="Product view">
+              {mockup.views.map((entry, index) => (
+                <button
+                  key={entry.key}
+                  type="button"
+                  onClick={() => setActiveMockupView(index)}
+                  aria-pressed={index === activeMockupView}
+                  className={`min-h-9 rounded-sm px-3 text-xs font-medium transition-colors ${
+                    index === activeMockupView
+                      ? 'bg-ink text-paper'
+                      : 'bg-paper text-ink-soft ring-1 ring-inset ring-line hover:ring-line-strong'
+                  }`}
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-2 grid grid-cols-3 divide-x divide-line rounded-md border border-line bg-paper">
             <div className="p-3">
               <p className="label-xs">Fabric</p>
               <p className="mt-1 text-xs">{titleCase(garment.default_fabric)}</p>
             </div>
             <div className="p-3">
-              <p className="label-xs">Components</p>
-              <p className="mt-1 text-xs">{garment.components.length} parts</p>
+              <p className="label-xs">Printable</p>
+              <p className="mt-1 text-xs tabular-nums">
+                {mockupView ? `${mockupView.maxPrintCm.width} × ${mockupView.maxPrintCm.height} cm` : '—'}
+              </p>
             </div>
             <div className="p-3">
               <p className="label-xs">From</p>
               <p className="mt-1 text-xs">{formatPrice(garment.base_price_cents, garment.currency)}</p>
             </div>
           </div>
+
+          <p className="mt-2 text-[0.6875rem] leading-relaxed text-ink-muted">
+            Rendered garment preview, not a photograph of a physical sample. Production colour and placement
+            are confirmed by the print partner before manufacturing.
+          </p>
 
           {profileQuery.data?.size_recommendation?.size && (
             <div className="mt-3 flex items-center justify-between border border-line bg-paper p-3 text-xs">
@@ -375,22 +422,70 @@ export function GarmentPage() {
               )}
             </div>
             <p className="mt-2 text-sm leading-relaxed text-ink-muted">{garment.description}</p>
-            <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-3 text-xs sm:grid-cols-4">
+
+            {/* Cost, suggested retail and margin. Demonstration figures, labelled. */}
+            <div className="mt-4 rounded-md border border-line bg-bone/60 p-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[0.8125rem] font-medium">Pricing estimate</p>
+                <span className="rounded-full bg-paper px-2 py-0.5 text-[0.625rem] font-medium text-ink-muted ring-1 ring-inset ring-line">
+                  Sample data
+                </span>
+              </div>
+              <dl className="mt-2.5 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <dt className="text-[0.6875rem] text-ink-muted">Base cost</dt>
+                  <dd className="mt-0.5 text-sm font-semibold tabular-nums">
+                    {formatPrice(garment.base_price_cents, garment.currency)}
+                  </dd>
+                </div>
+                <div className="border-x border-line">
+                  <dt className="text-[0.6875rem] text-ink-muted">Est. retail</dt>
+                  <dd className="mt-0.5 text-sm font-semibold tabular-nums">
+                    {formatPrice(Math.round(garment.base_price_cents * 2.2), garment.currency)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[0.6875rem] text-ink-muted">Est. margin</dt>
+                  <dd className="mt-0.5 text-sm font-semibold tabular-nums text-success">
+                    {formatPrice(Math.round(garment.base_price_cents * 1.2), garment.currency)}
+                  </dd>
+                </div>
+              </dl>
+              <p className="mt-2 text-[0.6875rem] leading-relaxed text-ink-muted">
+                Illustrative only. No supplier price has been agreed and no order is placed from this page.
+              </p>
+            </div>
+            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-4 text-xs sm:grid-cols-3">
               <div>
-                <dt className="label-xs">Fit</dt>
+                <dt className="text-ink-muted">Fit</dt>
                 <dd className="mt-0.5">{titleCase(garment.fit)}</dd>
               </div>
               <div>
-                <dt className="label-xs">Sizes</dt>
-                <dd className="mt-0.5">{garment.sizes.join(' · ')}</dd>
-              </div>
-              <div>
-                <dt className="label-xs">Fabric</dt>
+                <dt className="text-ink-muted">Material</dt>
                 <dd className="mt-0.5">{titleCase(garment.default_fabric)}</dd>
               </div>
               <div>
-                <dt className="label-xs">Components</dt>
-                <dd className="mt-0.5">{garment.components.length} independent parts</dd>
+                <dt className="text-ink-muted">Season</dt>
+                <dd className="mt-0.5">{titleCase(garment.season)}</dd>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <dt className="text-ink-muted">Sizes</dt>
+                <dd className="mt-0.5">{garment.sizes.join(' · ')}</dd>
+              </div>
+              <div>
+                <dt className="text-ink-muted">Blank colour</dt>
+                <dd className="mt-0.5 flex items-center gap-1.5">
+                  <span
+                    className="size-3 rounded-full ring-1 ring-inset ring-ink/10"
+                    style={{ backgroundColor: garment.default_color }}
+                    aria-hidden="true"
+                  />
+                  {mockup?.blank ?? 'Design preview'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-ink-muted">Customisable parts</dt>
+                <dd className="mt-0.5">{garment.components.length}</dd>
               </div>
             </dl>
           </header>

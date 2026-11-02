@@ -25,6 +25,7 @@ const TryOnPage = lazy(() => import('@/pages/TryOnPage').then((m) => ({ default:
 const OutfitsPage = lazy(() => import('@/pages/OutfitsPage').then((m) => ({ default: m.OutfitsPage })))
 const ProfilePage = lazy(() => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 const AssistantPage = lazy(() => import('@/pages/AssistantPage').then((m) => ({ default: m.AssistantPage })))
+const CataloguePage = lazy(() => import('@/pages/CataloguePage').then((m) => ({ default: m.CataloguePage })))
 const MarketplacePage = lazy(() => import('@/pages/MarketplacePage').then((m) => ({ default: m.MarketplacePage })))
 const BusinessPage = lazy(() => import('@/pages/BusinessPage').then((m) => ({ default: m.BusinessPage })))
 const BusinessDashboardPage = lazy(() => import('@/pages/BusinessDashboardPage').then((m) => ({ default: m.BusinessDashboardPage })))
@@ -49,6 +50,7 @@ export default function App() {
         <Route index element={page(<LandingPage />)} />
         <Route path="login" element={page(<LoginPage />)} />
         <Route path="register" element={page(<RegisterPage />)} />
+        <Route path="catalogue" element={page(<CataloguePage />)} />
         <Route path="studio" element={page(<StudioHubPage />)} />
         <Route path="studio/accessories" element={page(<AccessoriesPage />)} />
         <Route path="studio/:gender" element={page(<StudioPage />)} />
