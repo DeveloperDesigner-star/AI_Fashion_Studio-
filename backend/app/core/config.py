@@ -158,6 +158,20 @@ class Settings(BaseSettings):
     openai_text_model: str = "gpt-4o-mini"
     openai_vision_model: str = "gpt-4o-mini"
     ai_request_timeout: float = 45.0
+
+    # ---- Design replication (reference image -> garment design) ----
+    # Image editing/generation is a separate capability from chat and vision.
+    # It is disabled unless a provider that actually returns images is
+    # configured; there is no local fallback that could be mistaken for a
+    # generated render.
+    design_generation_enabled: bool = True
+    gemini_image_model: str = "gemini-2.5-flash-image"
+    design_generation_timeout: float = 90.0
+    # Hard ceiling for a rendered design, and for how many references a single
+    # design may hold. Keep both small: these are private user uploads.
+    design_reference_max_bytes: int = 12 * 1024 * 1024
+    design_max_references_per_design: int = 6
+    design_max_generations_per_hour: int = 12
     ai_daily_request_limit: int = 40
     ai_daily_token_limit: int = 120_000
     ai_max_prompt_chars: int = 6000

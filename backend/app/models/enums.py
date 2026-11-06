@@ -146,6 +146,10 @@ class MediaKind(StrEnum):
     PRINT_FILE = "print_file"
     PRINT_PACKAGE = "print_package"
     PORTFOLIO = "portfolio"
+    # An image produced by the design-replication renderer. Distinct from EXPORT
+    # (a file the user downloaded) and from TRY_ON (a person wearing it), because
+    # the three are routinely confused in a design tool.
+    DESIGN_RENDER = "design_render"
 
 
 class DesignStatus(StrEnum):

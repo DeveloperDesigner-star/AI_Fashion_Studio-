@@ -195,7 +195,7 @@ def test_sanitizer_redacts_keys_and_tokens() -> None:
     assert "[redacted]" in cleaned
 
 
-def test_capabilities_expose_nine_tasks_and_vision_capability(
+def test_capabilities_expose_the_task_catalogue_and_vision_capability(
     client: TestClient, auth: dict[str, str]
 ) -> None:
     body = client.get("/api/v1/ai/capabilities", headers=auth).json()
@@ -210,6 +210,8 @@ def test_capabilities_expose_nine_tasks_and_vision_capability(
         "design_prompt",
         "style_recommendations",
         "outfit_combination",
+        # Added for design replication: structured blueprint extraction.
+        "design_blueprint",
     }
     assert tasks["pattern_identification"]["modality"] == "vision"
     assert tasks["fashion_recommendations"]["modality"] == "text"

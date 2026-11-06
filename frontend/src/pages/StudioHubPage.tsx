@@ -25,6 +25,13 @@ const entries = [
     tone: 'bg-sand/50',
   },
   {
+    to: '/studio/replicate',
+    label: 'Replicate a design',
+    kicker: 'From reference',
+    copy: 'Upload an inspiration image, review what the model can actually see, and apply it to a garment template.',
+    tone: 'bg-sand/50',
+  },
+  {
     to: '/studio/accessories',
     label: 'Shoes & accessories',
     kicker: 'Finishing',
