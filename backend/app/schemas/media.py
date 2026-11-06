@@ -57,6 +57,12 @@ class PrintSheetResponse(BaseModel):
     download_url: str
 
 
+class RotateRequest(BaseModel):
+    """Quarter-turn rotation. Arbitrary angles are refused rather than cropped."""
+
+    degrees: int = Field(description="90, 180 or 270 degrees clockwise")
+
+
 class CropRequest(BaseModel):
     """Normalised crop rectangle (fractions of the source image)."""
 

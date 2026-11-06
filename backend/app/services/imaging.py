@@ -338,3 +338,32 @@ def crop_artwork(
         "width": right - left,
         "height": bottom - top,
     }
+
+
+def rotate_artwork(image_path: Path, *, degrees: int) -> tuple[bytes, dict[str, Any]]:
+    """Rotate a reference by a quarter turn and return a new PNG.
+
+    Only multiples of 90 degrees are accepted. Arbitrary angles would need
+    padding or cropping, and silently cropping a user's reference is exactly the
+    kind of quiet data loss this project avoids — the user can crop explicitly
+    afterwards if they want the padded corners gone.
+    """
+
+    if degrees not in {90, 180, 270}:
+        raise ImagingError("Rotation is limited to 90, 180 or 270 degrees.")
+
+    try:
+        with Image.open(image_path) as image:
+            artwork = ImageOps.exif_transpose(image).convert("RGBA")
+    except (OSError, ValueError) as exc:
+        raise ImagingError("The image could not be read for rotation.") from exc
+
+    # PIL rotates counter-clockwise; the UI's "rotate right" is clockwise.
+    rotated = artwork.rotate(-degrees, expand=True)
+    buffer = io.BytesIO()
+    rotated.save(buffer, format="PNG", optimize=True)
+    return buffer.getvalue(), {
+        "degrees": degrees,
+        "width": rotated.width,
+        "height": rotated.height,
+    }

@@ -120,6 +120,9 @@ export function DesignsPage() {
         description="Every colourway and component specification you have saved. Open one to keep editing, duplicate it for a new variant, or send it to the fitting room."
         actions={
           <>
+            <LinkButton to="/studio/replicate" size="sm" variant="outline">
+              Replicate a reference
+            </LinkButton>
             <LinkButton to="/studio/women" size="sm" variant="outline">
               Women
             </LinkButton>

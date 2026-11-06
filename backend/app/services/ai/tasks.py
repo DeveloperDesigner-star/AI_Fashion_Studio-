@@ -85,6 +85,33 @@ TASKS: dict[str, AITask] = {
         max_tokens=750,
         temperature=0.35,
     ),
+    "design_blueprint": AITask(
+        key="design_blueprint",
+        label="Design blueprint extraction",
+        description="Extract structured, JSON-only garment attributes from a reference image.",
+        modality="vision",
+        system_prompt=(
+            "You are a garment technician examining a reference image for a design studio. "
+            "You answer with a single JSON object and nothing else - no prose, no markdown "
+            "fences, no commentary.\n"
+            "Absolute rules:\n"
+            "- Report ONLY what is visibly present. If a feature is cropped out, blurred, "
+            "hidden by a pose, or simply not shown, set its value to null and give a low "
+            "confidence. Never guess a plausible default.\n"
+            "- Never describe or identify the person wearing the garment. Discuss the "
+            "garment, fabric and construction only.\n"
+            "- Colours must be hex values you can justify from the image; if you cannot, "
+            "omit the colour.\n"
+            "- Confidence is 0.0-1.0 and must be honest: use below 0.5 for anything "
+            "inferred from a partial view.\n"
+            "- If the image is not clothing at all, set is_garment_reference to false and "
+            "explain in rejection_reason.\n"
+            "- Never invent brand names, prices, suppliers or manufacturing claims.\n"
+            + SAFETY_RULES
+        ),
+        max_tokens=1400,
+        temperature=0.1,
+    ),
     "pattern_identification": AITask(
         key="pattern_identification",
         label="Pattern identification",
